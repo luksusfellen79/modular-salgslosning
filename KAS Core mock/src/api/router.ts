@@ -294,6 +294,48 @@ router.post('/customers', (req: Request, res: Response) => {
   res.status(201).json({ customer: newCustomer, sale: saleRecord, created: true });
 });
 
+// ─── SDU: insentiv-administrasjon ────────────────────────────────────────────
+
+router.post('/products/sdu/:productId/incentives', (req: Request, res: Response) => {
+  const product = SDU_PRODUCTS.find(p => p.productId === req.params.productId);
+  if (!product) return res.status(404).json({ error: 'Product not found' });
+
+  const { name, description, type, value, currency, validFrom, validUntil, visibleToSeller } = req.body as {
+    name: string; description: string; type: string;
+    value: number; currency?: string; validFrom: string; validUntil: string; visibleToSeller: boolean;
+  };
+  if (!name || !type || !validFrom || !validUntil) {
+    return res.status(400).json({ error: 'name, type, validFrom og validUntil er påkrevd' });
+  }
+
+  const newIncentive = {
+    id: `inc-${uuidv4().slice(0, 8)}`,
+    name, description: description ?? '',
+    type, value: Number(value),
+    currency: currency ?? undefined,
+    validFrom, validUntil,
+    visibleToSeller: Boolean(visibleToSeller),
+  };
+
+  (product.incentives as typeof newIncentive[]).push(newIncentive);
+  logger.info('SDU incentive added', { productId: product.productId, incentiveId: newIncentive.id });
+  res.status(201).json(product);
+});
+
+router.delete('/products/sdu/:productId/incentives/:incentiveId', (req: Request, res: Response) => {
+  const product = SDU_PRODUCTS.find(p => p.productId === req.params.productId);
+  if (!product) return res.status(404).json({ error: 'Product not found' });
+
+  const before = product.incentives.length;
+  product.incentives = product.incentives.filter(i => i.id !== req.params.incentiveId);
+  if (product.incentives.length === before) {
+    return res.status(404).json({ error: 'Incentive not found' });
+  }
+
+  logger.info('SDU incentive removed', { productId: product.productId, incentiveId: req.params.incentiveId });
+  res.json(product);
+});
+
 // ─── SDU: hent salgslogg ──────────────────────────────────────────────────────
 
 router.get('/sales/sdu', (_req: Request, res: Response) => {
