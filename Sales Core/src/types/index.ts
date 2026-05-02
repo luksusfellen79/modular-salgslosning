@@ -66,3 +66,42 @@ export interface SseNotification {
   timestamp: string;
   message: string;
 }
+
+// ─── SDU: Selger-registry og besøksrunder ─────────────────────────────────────
+
+export type SellerRole = 'seller' | 'manager';
+
+export interface Seller {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  role: SellerRole;
+  sfId?: string;          // Salesforce ID — klar for fremtidig sync
+  isActive: boolean;
+  createdAt: string;
+}
+
+export type RoundStatus = 'draft' | 'active' | 'completed';
+
+export interface RoundUnit {
+  unitId: string;
+  buildingId: string;
+  address: string;        // Lesbar adresse for visning
+  residentName?: string;
+  visitStatus: 'pending' | 'visited' | 'not_home' | 'sold' | 'no_interest';
+  visitedAt?: string;
+  note?: string;
+}
+
+export interface Round {
+  id: string;
+  name: string;
+  date: string;           // ISO-dato, kvelden runden gjelder
+  seller: { id: string; name: string };
+  units: RoundUnit[];
+  status: RoundStatus;
+  createdBy: string;      // selgerleder-navn (foreløpig fritekst)
+  createdAt: string;
+  updatedAt: string;
+}

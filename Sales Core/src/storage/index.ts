@@ -1,7 +1,7 @@
 // ── File-based JSON storage ──
 import fs from 'fs';
 import path from 'path';
-import { Offer, OfferEvent, Opportunity } from '../types';
+import { Offer, OfferEvent, Opportunity, Round, Seller } from '../types';
 
 const dataDir = process.env.DATA_DIR
   ? path.resolve(process.env.DATA_DIR)
@@ -57,4 +57,40 @@ export function readEvents(): OfferEvent[] {
 
 export function writeEvents(data: OfferEvent[]): void {
   writeJsonFile('events.json', data);
+}
+
+// ─── SDU storage ──────────────────────────────────────────────────────────────
+
+const SELLER_SEED: Seller[] = [
+  { id: 'sel-1', name: 'Kari Nordmann',   email: 'kari.nordmann@telenor.com',   phone: '91234501', role: 'seller',  sfId: '005SDU0001', isActive: true, createdAt: '2026-01-15T08:00:00Z' },
+  { id: 'sel-2', name: 'Ole Hansen',      email: 'ole.hansen@telenor.com',      phone: '91234502', role: 'seller',  sfId: '005SDU0002', isActive: true, createdAt: '2026-01-15T08:00:00Z' },
+  { id: 'sel-3', name: 'Lise Berg',       email: 'lise.berg@telenor.com',       phone: '91234503', role: 'seller',  sfId: '005SDU0003', isActive: true, createdAt: '2026-01-15T08:00:00Z' },
+  { id: 'sel-4', name: 'Erik Johansen',   email: 'erik.johansen@telenor.com',   phone: '91234504', role: 'seller',  sfId: '005SDU0004', isActive: true, createdAt: '2026-01-15T08:00:00Z' },
+  { id: 'sel-5', name: 'Ingrid Sørensen', email: 'ingrid.sorensen@telenor.com', phone: '91234505', role: 'seller',  sfId: '005SDU0005', isActive: true, createdAt: '2026-02-01T08:00:00Z' },
+  { id: 'sel-6', name: 'Per Andersen',    email: 'per.andersen@telenor.com',    phone: '91234506', role: 'manager', sfId: '005SDU0006', isActive: true, createdAt: '2026-01-15T08:00:00Z' },
+];
+
+let _sellersBootstrapped = false;
+
+export function readSellers(): Seller[] {
+  const stored = readJsonFile<Seller[]>('sdu-sellers.json');
+  if (!_sellersBootstrapped && stored.length === 0) {
+    writeJsonFile('sdu-sellers.json', SELLER_SEED);
+    _sellersBootstrapped = true;
+    return SELLER_SEED;
+  }
+  _sellersBootstrapped = true;
+  return stored;
+}
+
+export function writeSellers(data: Seller[]): void {
+  writeJsonFile('sdu-sellers.json', data);
+}
+
+export function readRounds(): Round[] {
+  return readJsonFile<Round[]>('sdu-rounds.json');
+}
+
+export function writeRounds(data: Round[]): void {
+  writeJsonFile('sdu-rounds.json', data);
 }

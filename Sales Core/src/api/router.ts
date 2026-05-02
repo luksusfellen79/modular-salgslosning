@@ -5,12 +5,16 @@ import {
   readEvents,
   readOffers,
   readOpportunities,
+  readRounds,
+  readSellers,
   writeEvents,
   writeOffers,
   writeOpportunities,
+  writeRounds,
+  writeSellers,
 } from '../storage';
 import { eventBus } from '../events';
-import { Offer, OfferEvent, OfferStatus, Opportunity, OpportunityStage } from '../types';
+import { Offer, OfferEvent, OfferStatus, Opportunity, OpportunityStage, Round, RoundStatus, RoundUnit, Seller } from '../types';
 import { sseManager } from '../events/sse-manager';
 
 export const router = express.Router();
@@ -434,4 +438,163 @@ router.get('/notifications/stream', (req: Request, res: Response) => {
     clearInterval(interval);
     sseManager.removeConnection(id);
   });
+});
+
+// ─── SDU: Seller registry ────────────────────────────────────────────────────
+
+router.get('/api/sdu/sellers', (req: Request, res: Response) => {
+  let sellers = readSellers();
+  const { role, activeOnly } = req.query;
+
+  if (activeOnly !== 'false') {
+    sellers = sellers.filter((s) => s.isActive);
+  }
+  if (typeof role === 'string') {
+    sellers = sellers.filter((s) => s.role === role);
+  }
+
+  res.json(sellers);
+});
+
+router.post('/api/sdu/sellers', (req: Request, res: Response) => {
+  const body = req.body as Partial<Seller>;
+  if (!body.name || !body.email || !body.role) {
+    return res.status(400).json({ error: 'name, email og role er påkrevd' });
+  }
+
+  const sellers = readSellers();
+  if (sellers.find((s) => s.email === body.email)) {
+    return res.status(409).json({ error: 'Selger med denne e-posten finnes allerede' });
+  }
+
+  const newSeller: Seller = {
+    id: `sel-${uuid()}`,
+    name: body.name,
+    email: body.email,
+    phone: body.phone,
+    role: body.role,
+    sfId: body.sfId,
+    isActive: body.isActive ?? true,
+    createdAt: new Date().toISOString(),
+  };
+
+  writeSellers([...sellers, newSeller]);
+  res.status(201).json(newSeller);
+});
+
+router.patch('/api/sdu/sellers/:id', (req: Request, res: Response) => {
+  const sellers = readSellers();
+  const existing = sellers.find((s) => s.id === req.params.id);
+  if (!existing) {
+    return res.status(404).json({ error: 'Selger ikke funnet' });
+  }
+
+  const body = req.body as Partial<Omit<Seller, 'id' | 'createdAt'>>;
+  const updated: Seller = { ...existing, ...body };
+
+  writeSellers(sellers.map((s) => (s.id === existing.id ? updated : s)));
+  res.json(updated);
+});
+
+// ─── SDU: Visit rounds ───────────────────────────────────────────────────────
+
+router.get('/api/sdu/rounds', (req: Request, res: Response) => {
+  let rounds = readRounds();
+  const { sellerId, date, status } = req.query;
+
+  if (typeof sellerId === 'string') {
+    rounds = rounds.filter((r) => r.seller.id === sellerId);
+  }
+  if (typeof date === 'string') {
+    rounds = rounds.filter((r) => r.date === date);
+  }
+  if (typeof status === 'string') {
+    rounds = rounds.filter((r) => r.status === status);
+  }
+
+  res.json(rounds);
+});
+
+router.post('/api/sdu/rounds', (req: Request, res: Response) => {
+  const body = req.body as Partial<Round>;
+  if (!body.name || !body.date || !body.seller?.id || !body.seller?.name || !body.createdBy) {
+    return res.status(400).json({ error: 'name, date, seller (id+name) og createdBy er påkrevd' });
+  }
+
+  const now = new Date().toISOString();
+  const newRound: Round = {
+    id: `rnd-${uuid()}`,
+    name: body.name,
+    date: body.date,
+    seller: body.seller,
+    units: Array.isArray(body.units) ? body.units : [],
+    status: 'draft',
+    createdBy: body.createdBy,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  const rounds = readRounds();
+  writeRounds([...rounds, newRound]);
+  res.status(201).json(newRound);
+});
+
+router.get('/api/sdu/rounds/:id', (req: Request, res: Response) => {
+  const round = readRounds().find((r) => r.id === req.params.id);
+  if (!round) {
+    return res.status(404).json({ error: 'Runde ikke funnet' });
+  }
+  res.json(round);
+});
+
+router.patch('/api/sdu/rounds/:id', (req: Request, res: Response) => {
+  const rounds = readRounds();
+  const existing = rounds.find((r) => r.id === req.params.id);
+  if (!existing) {
+    return res.status(404).json({ error: 'Runde ikke funnet' });
+  }
+
+  const body = req.body as Partial<Pick<Round, 'name' | 'date' | 'seller' | 'status' | 'units'>>;
+  const updated: Round = {
+    ...existing,
+    ...body,
+    updatedAt: new Date().toISOString(),
+  };
+
+  writeRounds(rounds.map((r) => (r.id === existing.id ? updated : r)));
+  res.json(updated);
+});
+
+router.patch('/api/sdu/rounds/:id/units/:unitId', (req: Request, res: Response) => {
+  const rounds = readRounds();
+  const existing = rounds.find((r) => r.id === req.params.id);
+  if (!existing) {
+    return res.status(404).json({ error: 'Runde ikke funnet' });
+  }
+
+  const unitIndex = existing.units.findIndex((u) => u.unitId === req.params.unitId);
+  if (unitIndex === -1) {
+    return res.status(404).json({ error: 'Enhet ikke funnet i runden' });
+  }
+
+  const body = req.body as Partial<Pick<RoundUnit, 'visitStatus' | 'visitedAt' | 'note'>>;
+  const updatedUnit: RoundUnit = {
+    ...existing.units[unitIndex],
+    ...body,
+    visitedAt: body.visitStatus && body.visitStatus !== 'pending'
+      ? (body.visitedAt ?? new Date().toISOString())
+      : existing.units[unitIndex].visitedAt,
+  };
+
+  const updatedUnits = [...existing.units];
+  updatedUnits[unitIndex] = updatedUnit;
+
+  const updatedRound: Round = {
+    ...existing,
+    units: updatedUnits,
+    updatedAt: new Date().toISOString(),
+  };
+
+  writeRounds(rounds.map((r) => (r.id === existing.id ? updatedRound : r)));
+  res.json(updatedRound);
 });

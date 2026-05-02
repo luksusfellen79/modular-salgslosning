@@ -1,6 +1,7 @@
-import { useState, useCallback } from 'react';
-import { BUILDINGS, Building, Resident, Campaign, VisitStatus, VisitOutcome } from './lib/types';
+import { useState, useCallback, useEffect } from 'react';
+import { Resident, Campaign, VisitStatus, VisitOutcome } from './lib/types';
 import { fetchResidents, logSDUOutcome } from './lib/kasCore';
+import { fetchSellers, fetchRoundsForSeller, updateUnitVisit, Round, RoundUnit, Seller, UnitVisitStatus } from './lib/salesCore';
 
 // ── Telenor logo ──────────────────────────────────────────────────────────────
 function TelenorLogo({ size = 24, white = false }: { size?: number; white?: boolean }) {
@@ -22,6 +23,22 @@ const STATUS_CONFIG: Record<VisitOutcome, { label: string; color: string; bg: st
   followup:  { label: 'Oppfølging avtalt',  color: '#0085C3', bg: '#E6F7FF', ring: 'ring-blue-400'  },
   marketing: { label: 'Sendt marketing',    color: '#7B2D8B', bg: '#F5EAF7', ring: 'ring-purple-400'},
 };
+
+// Map CRM outcome → Sales Core visit status
+function toUnitVisitStatus(outcome: VisitOutcome): UnitVisitStatus {
+  const map: Record<VisitOutcome, UnitVisitStatus> = {
+    sold:      'sold',
+    no_answer: 'not_home',
+    rejected:  'no_interest',
+    followup:  'visited',
+    marketing: 'visited',
+  };
+  return map[outcome];
+}
+
+function todayISO(): string {
+  return new Date().toISOString().slice(0, 10);
+}
 
 // ── ScoreRing ─────────────────────────────────────────────────────────────────
 function ScoreRing({ score, label }: { score: number; label: string }) {
@@ -45,8 +62,19 @@ function ScoreRing({ score, label }: { score: number; label: string }) {
   );
 }
 
-// ── Building Picker ───────────────────────────────────────────────────────────
-function BuildingPicker({ onSelect }: { onSelect: (b: Building) => void }) {
+// ── Seller Picker ─────────────────────────────────────────────────────────────
+function SellerPicker({ onSelect }: { onSelect: (s: Seller) => void }) {
+  const [sellers, setSellers] = useState<Seller[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    fetchSellers()
+      .then(setSellers)
+      .catch(() => setError('Kunne ikke hente selgerliste'))
+      .finally(() => setLoading(false));
+  }, []);
+
   return (
     <div className="min-h-screen bg-[#005A8E] flex flex-col items-center justify-center px-5 font-sans">
       <div className="mb-10 text-center">
@@ -55,20 +83,26 @@ function BuildingPicker({ onSelect }: { onSelect: (b: Building) => void }) {
           <span className="text-2xl font-bold text-white tracking-tight">Telenor</span>
         </div>
         <h1 className="text-3xl font-bold text-white mb-1">Feltsalg</h1>
-        <p className="text-sm text-white/50">Velg bygg for dagens rute</p>
+        <p className="text-sm text-white/50">Hvem er du?</p>
       </div>
 
       <div className="w-full max-w-sm space-y-3">
-        {BUILDINGS.map((b) => (
+        {loading && (
+          <div className="text-white/50 text-sm text-center py-4">Laster selgere…</div>
+        )}
+        {error && (
+          <div className="text-red-300 text-sm text-center py-4">{error}</div>
+        )}
+        {sellers.map((s) => (
           <button
-            key={b.id}
-            onClick={() => onSelect(b)}
-            className="w-full bg-white/10 border border-white/20 rounded-2xl p-5 text-left hover:bg-telenor-blue/20 hover:border-telenor-blue active:scale-[0.98] transition-all"
+            key={s.id}
+            onClick={() => onSelect(s)}
+            className="w-full bg-white/10 border border-white/20 rounded-2xl p-5 text-left hover:bg-white/20 active:scale-[0.98] transition-all"
           >
             <div className="flex items-center justify-between">
               <div>
-                <div className="text-white font-bold text-lg">{b.address}</div>
-                <div className="text-white/50 text-sm mt-0.5">{b.postalCode} {b.city} · {b.totalUnits} enheter</div>
+                <div className="text-white font-bold text-lg">{s.name}</div>
+                {s.phone && <div className="text-white/50 text-sm mt-0.5">{s.phone}</div>}
               </div>
               <svg className="w-5 h-5 text-white/40" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                 <path d="M9 18l6-6-6-6" />
@@ -81,25 +115,100 @@ function BuildingPicker({ onSelect }: { onSelect: (b: Building) => void }) {
   );
 }
 
-// ── Resident List ─────────────────────────────────────────────────────────────
-function ResidentList({
-  building,
-  residents,
+// ── Round Picker ──────────────────────────────────────────────────────────────
+function RoundPicker({ seller, onSelect, onBack }: { seller: Seller; onSelect: (r: Round) => void; onBack: () => void }) {
+  const [rounds, setRounds] = useState<Round[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    fetchRoundsForSeller(seller.id, todayISO())
+      .then(setRounds)
+      .catch(() => setError('Kunne ikke hente runder fra Sales Core'))
+      .finally(() => setLoading(false));
+  }, [seller.id]);
+
+  const statusLabel: Record<string, string> = { draft: 'Utkast', active: 'Aktiv', completed: 'Fullført' };
+  const statusColor: Record<string, string> = { draft: '#9DA5B1', active: '#F5A623', completed: '#00A650' };
+
+  return (
+    <div className="min-h-screen bg-[#005A8E] flex flex-col items-center justify-center px-5 font-sans">
+      <div className="mb-8 text-center">
+        <div className="flex items-center justify-center gap-3 mb-3">
+          <TelenorLogo size={28} white />
+          <span className="text-xl font-bold text-white tracking-tight">Telenor Feltsalg</span>
+        </div>
+        <h2 className="text-2xl font-bold text-white mb-1">Hei, {seller.name.split(' ')[0]}!</h2>
+        <p className="text-sm text-white/50">Mine runder for i kveld</p>
+      </div>
+
+      <div className="w-full max-w-sm space-y-3">
+        {loading && <div className="text-white/50 text-sm text-center py-4">Henter runder…</div>}
+        {error && <div className="text-red-300 text-sm text-center py-4">{error}</div>}
+
+        {!loading && rounds.length === 0 && !error && (
+          <div className="bg-white/10 border border-white/20 rounded-2xl p-6 text-center">
+            <div className="text-3xl mb-3">📋</div>
+            <div className="text-white font-semibold">Ingen runder planlagt for i dag</div>
+            <div className="text-white/50 text-sm mt-1">Kontakt salgsleder for å få tildelt en runde</div>
+          </div>
+        )}
+
+        {rounds.map((r) => {
+          const done = r.units.filter(u => u.visitStatus !== 'pending').length;
+          const sold = r.units.filter(u => u.visitStatus === 'sold').length;
+          return (
+            <button
+              key={r.id}
+              onClick={() => onSelect(r)}
+              className="w-full bg-white/10 border border-white/20 rounded-2xl p-5 text-left hover:bg-white/20 active:scale-[0.98] transition-all"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1">
+                  <div className="text-white font-bold text-lg leading-tight">{r.name}</div>
+                  <div className="text-white/50 text-sm mt-1">{r.units.length} enheter · {done} besøkt · {sold} solgt</div>
+                </div>
+                <span className="text-xs font-bold px-2.5 py-1 rounded-full shrink-0 mt-0.5"
+                  style={{ background: 'rgba(255,255,255,0.15)', color: statusColor[r.status] ?? '#fff' }}>
+                  {statusLabel[r.status] ?? r.status}
+                </span>
+              </div>
+              {r.units.length > 0 && (
+                <div className="mt-3 bg-white/15 rounded-full h-1 overflow-hidden">
+                  <div className="h-full bg-white/70 rounded-full" style={{ width: `${Math.round((done / r.units.length) * 100)}%` }} />
+                </div>
+              )}
+            </button>
+          );
+        })}
+
+        <button
+          onClick={onBack}
+          className="w-full text-white/50 text-sm text-center pt-4 pb-2"
+        >
+          ← Ikke meg
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Round Unit List ───────────────────────────────────────────────────────────
+function RoundUnitList({
+  round,
   visitMap,
-  loading,
   onSelect,
   onBack,
 }: {
-  building: Building;
-  residents: Resident[];
+  round: Round;
   visitMap: Map<string, VisitStatus>;
-  loading: boolean;
-  onSelect: (r: Resident) => void;
+  onSelect: (unit: RoundUnit) => void;
   onBack: () => void;
 }) {
-  const visited = residents.filter((r) => visitMap.has(r.unitId)).length;
-  const sold = [...visitMap.values()].filter((v) => v.outcome === 'sold').length;
-  const conversion = visited > 0 ? Math.round((sold / visited) * 100) : 0;
+  const done = round.units.filter(u => visitMap.has(u.unitId) || u.visitStatus !== 'pending').length;
+  const sold = [...visitMap.values()].filter(v => v.outcome === 'sold').length
+    + round.units.filter(u => !visitMap.has(u.unitId) && u.visitStatus === 'sold').length;
+  const conversion = done > 0 ? Math.round((sold / done) * 100) : 0;
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans flex flex-col">
@@ -114,26 +223,24 @@ function ResidentList({
             onClick={onBack}
             className="text-xs text-white/70 bg-white/10 border border-white/20 px-3 py-1 rounded-full"
           >
-            Bytt bygg
+            Bytt runde
           </button>
         </div>
-        <div className="text-white font-bold text-xl mb-0.5">{building.address}</div>
-        <div className="text-white/50 text-xs mb-4">{building.postalCode} {building.city}</div>
+        <div className="text-white font-bold text-xl mb-0.5">{round.name}</div>
+        <div className="text-white/50 text-xs mb-4">{round.date}</div>
 
-        {/* Progress bar */}
         <div className="bg-white/15 rounded-full h-1.5 mb-3 overflow-hidden">
           <div
-            className="h-full bg-telenor-blue rounded-full transition-all duration-500"
-            style={{ width: `${residents.length > 0 ? (visited / residents.length) * 100 : 0}%` }}
+            className="h-full bg-white/70 rounded-full transition-all duration-500"
+            style={{ width: `${round.units.length > 0 ? (done / round.units.length) * 100 : 0}%` }}
           />
         </div>
 
-        {/* Stats */}
         <div className="grid grid-cols-3 gap-2">
           {[
-            { label: 'Besøkt', value: `${visited}/${residents.length}` },
-            { label: 'Solgt', value: sold },
-            { label: 'Konv.', value: visited > 0 ? `${conversion}%` : '–' },
+            { label: 'Besøkt', value: `${done}/${round.units.length}` },
+            { label: 'Solgt',  value: sold },
+            { label: 'Konv.',  value: done > 0 ? `${conversion}%` : '–' },
           ].map((s) => (
             <div key={s.label} className="bg-white/10 rounded-xl py-2 text-center">
               <div className="text-white font-bold text-lg leading-tight">{s.value}</div>
@@ -143,62 +250,49 @@ function ResidentList({
         </div>
       </div>
 
-      {/* List */}
+      {/* Unit list */}
       <div className="flex-1 overflow-y-auto">
-        {loading ? (
-          <div className="flex items-center justify-center py-20 text-gray-400 gap-2">
-            <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z" />
-            </svg>
-            <span className="text-sm">Henter beboere fra KAS Core…</span>
-          </div>
-        ) : (
-          residents.map((r, idx) => {
-            const visit = visitMap.get(r.unitId);
-            const statusCfg = visit ? STATUS_CONFIG[visit.outcome] : null;
-            const maxScore = Math.max(...Object.values(r.interestScores));
-            const scoreColor = maxScore >= 80 ? '#00A650' : maxScore >= 60 ? '#F5A623' : '#9DA5B1';
+        {round.units.map((unit, idx) => {
+          const localVisit = visitMap.get(unit.unitId);
+          const outcome = localVisit?.outcome;
+          const statusCfg = outcome ? STATUS_CONFIG[outcome] : null;
+          const isVisited = !!statusCfg || (unit.visitStatus !== 'pending' && !localVisit);
 
-            return (
-              <button
-                key={r.unitId}
-                onClick={() => onSelect(r)}
-                className="w-full text-left px-4 py-3.5 border-b border-gray-100 bg-white hover:bg-blue-50 active:bg-blue-100 transition-colors flex items-center gap-3"
-              >
-                <div className="w-8 h-8 rounded-full bg-telenor-blue-light flex items-center justify-center text-xs font-bold text-telenor-blue-dark shrink-0">
-                  {idx + 1}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="font-semibold text-gray-900 text-sm truncate">{r.name}</div>
-                  <div className="text-xs text-gray-500 mt-0.5">{r.unitNumber} · Etg. {r.floor}</div>
-                </div>
-                <div className="flex flex-col items-end gap-1.5 shrink-0">
-                  {statusCfg ? (
-                    <span
-                      className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
-                      style={{ color: statusCfg.color, backgroundColor: statusCfg.bg }}
-                    >
-                      {statusCfg.label}
-                    </span>
-                  ) : (
-                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
-                      Ikke besøkt
-                    </span>
-                  )}
-                  <div className="flex items-center gap-1">
-                    <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: scoreColor }} />
-                    <span className="text-[10px] font-bold" style={{ color: scoreColor }}>{maxScore}</span>
-                    <span className="text-[9px] text-gray-400">· {r.campaigns.length} kamp.</span>
-                  </div>
-                </div>
-                <svg className="w-4 h-4 text-gray-300 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                  <path d="M9 18l6-6-6-6" />
-                </svg>
-              </button>
-            );
-          })
-        )}
+          return (
+            <button
+              key={unit.unitId}
+              onClick={() => onSelect(unit)}
+              className="w-full text-left px-4 py-3.5 border-b border-gray-100 bg-white hover:bg-blue-50 active:bg-blue-100 transition-colors flex items-center gap-3"
+            >
+              <div className="w-8 h-8 rounded-full bg-telenor-blue-light flex items-center justify-center text-xs font-bold text-telenor-blue-dark shrink-0">
+                {idx + 1}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="font-semibold text-gray-900 text-sm truncate">{unit.residentName ?? unit.address}</div>
+                <div className="text-xs text-gray-500 mt-0.5 truncate">{unit.address}</div>
+              </div>
+              <div className="flex flex-col items-end gap-1.5 shrink-0">
+                {statusCfg ? (
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                    style={{ color: statusCfg.color, backgroundColor: statusCfg.bg }}>
+                    {statusCfg.label}
+                  </span>
+                ) : isVisited ? (
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
+                    Besøkt
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
+                    Ikke besøkt
+                  </span>
+                )}
+              </div>
+              <svg className="w-4 h-4 text-gray-300 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                <path d="M9 18l6-6-6-6" />
+              </svg>
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -224,7 +318,6 @@ function CampaignPanel({
 
   return (
     <div>
-      {/* Campaign tabs */}
       <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">
         Kampanjer ({campaigns.length})
       </div>
@@ -244,7 +337,6 @@ function CampaignPanel({
         ))}
       </div>
 
-      {/* Active campaign card */}
       <div
         className="rounded-xl p-4 mb-3"
         style={{ background: '#EFF8FF', border: `1.5px solid ${camp.color}40` }}
@@ -273,7 +365,6 @@ function CampaignPanel({
 
         <p className="text-xs text-gray-600 leading-relaxed mb-4">{camp.pitch}</p>
 
-        {/* Outcome buttons */}
         <div className="flex gap-2 mb-2">
           <button
             onClick={() => onOutcome('sold', camp, extraSel)}
@@ -293,7 +384,6 @@ function CampaignPanel({
           </button>
         </div>
 
-        {/* Extra products toggle */}
         <button
           onClick={() => setExtraOpen((o) => !o)}
           className="w-full py-2 rounded-xl text-xs font-semibold text-telenor-blue-dark border border-dashed border-telenor-blue/40 flex items-center justify-center gap-1.5 hover:bg-telenor-blue-light transition-colors"
@@ -329,7 +419,6 @@ function CampaignPanel({
         )}
       </div>
 
-      {/* Other outcomes */}
       <div className="grid grid-cols-2 gap-2">
         <button
           onClick={() => onOutcome('no_answer', camp, [])}
@@ -359,20 +448,34 @@ function CampaignPanel({
 
 // ── Resident Detail ───────────────────────────────────────────────────────────
 function ResidentDetail({
-  resident,
-  building,
+  unit,
+  round,
+  seller,
   visitStatus,
   onBack,
   onVisitLogged,
 }: {
-  resident: Resident;
-  building: Building;
+  unit: RoundUnit;
+  round: Round;
+  seller: Seller;
   visitStatus?: VisitStatus;
   onBack: () => void;
   onVisitLogged: (unitId: string, status: VisitStatus) => void;
 }) {
+  const [resident, setResident] = useState<Resident | null>(null);
+  const [loadingResident, setLoadingResident] = useState(true);
   const [logging, setLogging] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchResidents(unit.buildingId)
+      .then(residents => {
+        const found = residents.find(r => r.unitId === unit.unitId);
+        setResident(found ?? null);
+      })
+      .catch(() => setResident(null))
+      .finally(() => setLoadingResident(false));
+  }, [unit.buildingId, unit.unitId]);
 
   const showToast = (msg: string) => {
     setToastMsg(msg);
@@ -381,22 +484,29 @@ function ResidentDetail({
 
   const handleOutcome = useCallback(
     async (outcome: VisitOutcome, campaign: Campaign, extraProducts: string[]) => {
-      if (logging) return;
+      if (logging || !resident) return;
       setLogging(true);
       try {
-        const soldProducts = outcome === 'sold'
-          ? [campaign.product, ...extraProducts]
-          : [];
+        const soldProducts = outcome === 'sold' ? [campaign.product, ...extraProducts] : [];
 
+        // 1. Log outcome to KAS Core (creates/updates customer)
         await logSDUOutcome({
           outcome,
           unitId: resident.unitId,
           soldProducts,
           campaignId: campaign.id,
           campaignName: campaign.name,
-          salesRepName: 'Feltsalg',
-          notes: `Besøk: ${building.address}, ${resident.unitNumber}`,
+          salesRepName: seller.name,
+          notes: `Runde: ${round.name}, enhet ${unit.address}`,
         });
+
+        // 2. Persist visit status to Sales Core round
+        await updateUnitVisit(
+          round.id,
+          unit.unitId,
+          toUnitVisitStatus(outcome),
+          outcome === 'followup' ? 'Oppfølging avtalt' : outcome === 'marketing' ? 'Marketing-kampanje' : undefined
+        );
 
         const status: VisitStatus = {
           outcome,
@@ -407,20 +517,20 @@ function ResidentDetail({
         onVisitLogged(resident.unitId, status);
 
         const labels: Record<VisitOutcome, string> = {
-          sold: '✓ Kunde opprettet i KAS Core!',
+          sold:      '✓ Solgt! Kunde opprettet i KAS Core',
           no_answer: 'Registrert: Ikke hjemme',
-          rejected: 'Registrert: Ikke interessert',
-          followup: 'Oppfølging registrert',
+          rejected:  'Registrert: Ikke interessert',
+          followup:  'Oppfølging registrert',
           marketing: 'Lagt til i marketing',
         };
         showToast(labels[outcome]);
       } catch {
-        showToast('❌ Kunne ikke logge til KAS Core');
+        showToast('❌ Kunne ikke logge besøk');
       } finally {
         setLogging(false);
       }
     },
-    [logging, resident, building, onVisitLogged]
+    [logging, resident, round, unit, seller, onVisitLogged]
   );
 
   const scores = [
@@ -432,14 +542,12 @@ function ResidentDetail({
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans flex flex-col">
-      {/* Toast */}
       {toastMsg && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-gray-900 text-white text-sm font-semibold px-4 py-2.5 rounded-xl shadow-xl">
           {toastMsg}
         </div>
       )}
 
-      {/* Header */}
       <div className="bg-[#005A8E] px-4 pt-4 pb-5">
         <button
           onClick={onBack}
@@ -450,9 +558,9 @@ function ResidentDetail({
         </button>
         <div className="flex items-start justify-between">
           <div>
-            <div className="text-white font-bold text-xl">{resident.name}</div>
-            <div className="text-white/50 text-sm mt-0.5">{resident.unitNumber} · Etg. {resident.floor}</div>
-            {resident.phone && (
+            <div className="text-white font-bold text-xl">{unit.residentName ?? 'Ukjent beboer'}</div>
+            <div className="text-white/50 text-sm mt-0.5">{unit.address}</div>
+            {resident?.phone && (
               <a href={`tel:${resident.phone}`} className="text-telenor-blue text-sm mt-1 flex items-center gap-1">
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 014.07 6.82 2 2 0 016 4.68h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L10.09 12a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 18.92z" /></svg>
                 {resident.phone}
@@ -470,126 +578,154 @@ function ResidentDetail({
         </div>
       </div>
 
-      {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-
-        {/* Interest scores */}
-        <div className="bg-white rounded-xl p-4 border border-gray-100">
-          <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Interessescore</div>
-          <div className="grid grid-cols-4 gap-2">
-            {scores.map(({ key, label }) => (
-              <ScoreRing key={key} score={resident.interestScores[key]} label={label} />
-            ))}
+        {loadingResident ? (
+          <div className="flex items-center justify-center py-12 text-gray-400 gap-2">
+            <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z" />
+            </svg>
+            <span className="text-sm">Henter kundedata fra KAS Core…</span>
           </div>
-        </div>
-
-        {/* Existing products */}
-        {resident.existingProducts.length > 0 && (
-          <div className="bg-white rounded-xl p-4 border border-gray-100">
-            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Aktive produkter</div>
-            <div className="flex flex-wrap gap-1.5">
-              {resident.existingProducts.map((p) => (
-                <span key={p} className="bg-blue-50 text-blue-700 text-xs font-semibold px-2.5 py-1 rounded-full">{p}</span>
-              ))}
-            </div>
+        ) : !resident ? (
+          <div className="bg-white rounded-xl p-4 border border-gray-100 text-sm text-gray-500 text-center">
+            Fant ikke beboerdata i KAS Core for denne enheten.
           </div>
-        )}
-
-        {/* Previous products */}
-        {resident.previousProducts.length > 0 && (
-          <div className="bg-white rounded-xl p-4 border border-gray-100">
-            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Tidligere produkter</div>
-            <div className="flex flex-wrap gap-1.5 mb-2">
-              {resident.previousProducts.map((p) => (
-                <span key={p} className="bg-gray-100 text-gray-500 text-xs font-semibold px-2.5 py-1 rounded-full">{p}</span>
-              ))}
+        ) : (
+          <>
+            {/* Interest scores */}
+            <div className="bg-white rounded-xl p-4 border border-gray-100">
+              <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Interessescore</div>
+              <div className="grid grid-cols-4 gap-2">
+                {scores.map(({ key, label }) => (
+                  <ScoreRing key={key} score={resident.interestScores[key]} label={label} />
+                ))}
+              </div>
             </div>
-            {resident.cancelReason && (
-              <div className="flex items-center gap-1.5 text-xs text-red-500 mt-1">
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}><circle cx={12} cy={12} r={10} /><path d="M12 8v4M12 16h.01" /></svg>
-                Avslutningsgrunn: {resident.cancelReason}
+
+            {/* Existing products */}
+            {resident.existingProducts.length > 0 && (
+              <div className="bg-white rounded-xl p-4 border border-gray-100">
+                <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Aktive produkter</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {resident.existingProducts.map((p) => (
+                    <span key={p} className="bg-blue-50 text-blue-700 text-xs font-semibold px-2.5 py-1 rounded-full">{p}</span>
+                  ))}
+                </div>
               </div>
             )}
-          </div>
-        )}
 
-        {/* Campaigns */}
-        <div className="bg-white rounded-xl p-4 border border-gray-100">
-          {logging && (
-            <div className="flex items-center gap-2 text-sm text-gray-500 mb-3">
-              <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z" />
-              </svg>
-              Logger til Sales Core…
+            {/* Previous products */}
+            {resident.previousProducts.length > 0 && (
+              <div className="bg-white rounded-xl p-4 border border-gray-100">
+                <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Tidligere produkter</div>
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {resident.previousProducts.map((p) => (
+                    <span key={p} className="bg-gray-100 text-gray-500 text-xs font-semibold px-2.5 py-1 rounded-full">{p}</span>
+                  ))}
+                </div>
+                {resident.cancelReason && (
+                  <div className="flex items-center gap-1.5 text-xs text-red-500 mt-1">
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}><circle cx={12} cy={12} r={10} /><path d="M12 8v4M12 16h.01" /></svg>
+                    Avslutningsgrunn: {resident.cancelReason}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Campaigns */}
+            <div className="bg-white rounded-xl p-4 border border-gray-100">
+              {logging && (
+                <div className="flex items-center gap-2 text-sm text-gray-500 mb-3">
+                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z" />
+                  </svg>
+                  Logger besøk…
+                </div>
+              )}
+              {resident.campaigns.length > 0 ? (
+                <CampaignPanel
+                  campaigns={resident.campaigns}
+                  resident={resident}
+                  onOutcome={handleOutcome}
+                />
+              ) : (
+                <div className="text-sm text-gray-400 text-center py-4">Ingen kampanjer tilgjengelig</div>
+              )}
             </div>
-          )}
-          <CampaignPanel
-            campaigns={resident.campaigns}
-            resident={resident}
-            onOutcome={handleOutcome}
-          />
-        </div>
+          </>
+        )}
       </div>
     </div>
   );
 }
 
 // ── App root ──────────────────────────────────────────────────────────────────
-type Screen = 'picker' | 'list' | 'detail';
+type Screen = 'seller_picker' | 'round_picker' | 'unit_list' | 'detail';
 
 export default function App() {
-  const [screen, setScreen] = useState<Screen>('picker');
-  const [building, setBuilding] = useState<Building | null>(null);
-  const [residents, setResidents] = useState<Resident[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [selectedResident, setSelectedResident] = useState<Resident | null>(null);
+  const [screen, setScreen] = useState<Screen>('seller_picker');
+  const [seller, setSeller] = useState<Seller | null>(null);
+  const [round, setRound] = useState<Round | null>(null);
+  const [selectedUnit, setSelectedUnit] = useState<RoundUnit | null>(null);
   const [visitMap, setVisitMap] = useState<Map<string, VisitStatus>>(new Map());
 
-  const handleSelectBuilding = useCallback((b: Building) => {
-    setBuilding(b);
-    setScreen('list');
-    setLoading(true);
-    setResidents([]);
-    fetchResidents(b.id)
-      .then(setResidents)
-      .catch(() => setResidents([]))
-      .finally(() => setLoading(false));
-  }, []);
+  const handleSelectSeller = (s: Seller) => {
+    setSeller(s);
+    setRound(null);
+    setVisitMap(new Map());
+    setScreen('round_picker');
+  };
 
-  const handleSelectResident = useCallback((r: Resident) => {
-    setSelectedResident(r);
+  const handleSelectRound = (r: Round) => {
+    setRound(r);
+    setVisitMap(new Map());
+    setScreen('unit_list');
+  };
+
+  const handleSelectUnit = (unit: RoundUnit) => {
+    setSelectedUnit(unit);
     setScreen('detail');
-  }, []);
+  };
 
   const handleVisitLogged = useCallback((unitId: string, status: VisitStatus) => {
     setVisitMap((prev) => new Map(prev).set(unitId, status));
   }, []);
 
-  if (screen === 'picker') {
-    return <BuildingPicker onSelect={handleSelectBuilding} />;
+  if (screen === 'seller_picker') {
+    return <SellerPicker onSelect={handleSelectSeller} />;
   }
 
-  if (screen === 'list' && building) {
+  if (screen === 'round_picker' && seller) {
     return (
-      <ResidentList
-        building={building}
-        residents={residents}
-        visitMap={visitMap}
-        loading={loading}
-        onSelect={handleSelectResident}
-        onBack={() => { setScreen('picker'); setBuilding(null); setResidents([]); setVisitMap(new Map()); }}
+      <RoundPicker
+        seller={seller}
+        onSelect={handleSelectRound}
+        onBack={() => setScreen('seller_picker')}
       />
     );
   }
 
-  if (screen === 'detail' && selectedResident && building) {
+  if (screen === 'unit_list' && round) {
+    return (
+      <RoundUnitList
+        round={round}
+        visitMap={visitMap}
+        onSelect={handleSelectUnit}
+        onBack={() => setScreen('round_picker')}
+      />
+    );
+  }
+
+  if (screen === 'detail' && selectedUnit && round && seller) {
     return (
       <ResidentDetail
-        resident={selectedResident}
-        building={building}
-        visitStatus={visitMap.get(selectedResident.unitId)}
-        onBack={() => setScreen('list')}
+        unit={selectedUnit}
+        round={round}
+        seller={seller}
+        visitStatus={visitMap.get(selectedUnit.unitId)}
+        onBack={() => setScreen('unit_list')}
         onVisitLogged={handleVisitLogged}
       />
     );
