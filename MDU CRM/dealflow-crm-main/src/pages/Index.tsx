@@ -1,13 +1,49 @@
-import { useState, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { KanbanBoard } from '@/components/pipeline/KanbanBoard';
 import { SidePanel } from '@/components/pipeline/SidePanel';
-import { opportunities as initialOpps, Opportunity, formatCurrency } from '@/data/mockData';
-import { Plus, Filter, SlidersHorizontal } from 'lucide-react';
+import { Opportunity, formatCurrency } from '@/data/mockData';
+import { fetchOpportunities, SalesCoreOpportunity } from '@/lib/salesCore';
+import { Plus, Filter, SlidersHorizontal, Loader2 } from 'lucide-react';
+
+const STAGE_PROBABILITY: Record<string, number> = {
+  prospect: 10,
+  qualification: 30,
+  proposal: 55,
+  negotiation: 75,
+  'closed-won': 100,
+  'closed-lost': 0,
+};
+
+function toKanbanOpp(sc: SalesCoreOpportunity): Opportunity {
+  return {
+    id: sc.id,
+    name: sc.name,
+    accountName: sc.accountName,
+    value: sc.estimatedAnnualValue,
+    stage: sc.stage,
+    closeDate: sc.closeDate,
+    owner: { name: 'Sales Core', initials: 'SC', color: 'hsl(225 70% 45%)' },
+    probability: STAGE_PROBABILITY[sc.stage] ?? 50,
+    units: sc.units,
+    description: sc.notes,
+    contactName: sc.contactName ?? undefined,
+    contactEmail: sc.contactEmail ?? undefined,
+    createdDate: sc.createdAt,
+  };
+}
 
 export default function Index() {
-  const [deals, setDeals] = useState<Opportunity[]>(initialOpps);
+  const [deals, setDeals] = useState<Opportunity[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selectedDeal, setSelectedDeal] = useState<Opportunity | null>(null);
+
+  useEffect(() => {
+    fetchOpportunities()
+      .then((data) => setDeals(data.map(toKanbanOpp)))
+      .catch(() => setDeals([]))
+      .finally(() => setLoading(false));
+  }, []);
 
   const handleMoveDeal = useCallback((dealId: string, newStage: string) => {
     setDeals((prev) =>
@@ -24,7 +60,9 @@ export default function Index() {
         <div>
           <h1 className="text-xl font-bold text-foreground">Pipeline</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            {deals.length} deals · {formatCurrency(totalValue)} total value
+            {loading
+              ? 'Laster...'
+              : `${deals.length} deals · ${formatCurrency(totalValue)} total`}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -40,8 +78,26 @@ export default function Index() {
         </div>
       </div>
 
+      {/* Loading */}
+      {loading && (
+        <div className="flex items-center justify-center h-64 text-muted-foreground gap-2">
+          <Loader2 className="w-5 h-5 animate-spin" />
+          <span className="text-sm">Henter pipeline fra Sales Core...</span>
+        </div>
+      )}
+
+      {/* Empty state */}
+      {!loading && deals.length === 0 && (
+        <div className="flex flex-col items-center justify-center h-64 text-muted-foreground gap-2">
+          <p className="text-sm font-medium">Ingen deals i pipeline</p>
+          <p className="text-xs">Opprett en opportunity via Sales Core API for å komme i gang.</p>
+        </div>
+      )}
+
       {/* Board */}
-      <KanbanBoard deals={deals} onDealClick={setSelectedDeal} onMoveDeal={handleMoveDeal} />
+      {!loading && deals.length > 0 && (
+        <KanbanBoard deals={deals} onDealClick={setSelectedDeal} onMoveDeal={handleMoveDeal} />
+      )}
 
       {/* Side panel */}
       {selectedDeal && (

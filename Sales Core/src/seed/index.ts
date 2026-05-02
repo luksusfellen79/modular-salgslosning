@@ -1,7 +1,6 @@
 // ── Seed data initialization ──
-import { v4 as uuid } from 'uuid';
-import { readEvents, readOffers, readOpportunities, writeEvents, writeOffers, writeOpportunities } from '../storage';
-import { Offer, OfferEvent, Opportunity } from '../types';
+import { readOpportunities, writeOpportunities } from '../storage';
+import { Opportunity } from '../types';
 
 const now = new Date().toISOString();
 
@@ -78,131 +77,10 @@ const SEED_OPPORTUNITIES: Opportunity[] = [
   },
 ];
 
-const SEED_OFFERS: Offer[] = [
-  {
-    id: 'offer-001',
-    opportunityId: 'opp-001',
-    accountName: 'Parkveien Borettslag',
-    contactName: 'Erik Andersen',
-    contactEmail: 'erik.andersen@parkveien.no',
-    packageId: 'pkg-fiber',
-    packageName: 'Fiber+Smart',
-    selectedProducts: ['fiber-500', 'router-pro', 'support-24h'],
-    monthlyPricePerUnit: 750,
-    discountPercent: 10,
-    units: 120,
-    notes: 'Tilpasset for høyt databruk og driftsovervåkning.',
-    salesRepName: 'Sofie Hansen',
-    trackingToken: uuid(),
-    status: 'sent',
-    validUntil: '2026-07-15',
-    createdAt: now,
-    updatedAt: now,
-  },
-  {
-    id: 'offer-002',
-    opportunityId: 'opp-002',
-    accountName: 'Fjordheim Sameie',
-    contactName: 'Marte Olsen',
-    contactEmail: 'marte.olsen@fjordheim.no',
-    packageId: 'pkg-bredband',
-    packageName: 'Bredbånd Basis',
-    selectedProducts: ['fiber-300', 'router-basic'],
-    monthlyPricePerUnit: 650,
-    discountPercent: 5,
-    units: 80,
-    notes: 'Kostnadseffektiv løsning med stabil dekning.',
-    salesRepName: 'Jonas Kristiansen',
-    trackingToken: uuid(),
-    status: 'viewed',
-    validUntil: '2026-07-01',
-    createdAt: now,
-    updatedAt: now,
-  },
-  {
-    id: 'offer-003',
-    opportunityId: 'opp-003',
-    accountName: 'Solsiden Borettslag',
-    contactName: 'Lars Berg',
-    contactEmail: 'lars.berg@solsiden.no',
-    packageId: 'pkg-tv-bredband',
-    packageName: 'TV+Fiber',
-    selectedProducts: ['fiber-500', 'tv-complete'],
-    monthlyPricePerUnit: 980,
-    discountPercent: 15,
-    units: 200,
-    notes: 'Draft for intern gjennomgang.',
-    salesRepName: 'Ellen Berg',
-    trackingToken: uuid(),
-    status: 'draft',
-    validUntil: '2026-08-15',
-    createdAt: now,
-    updatedAt: now,
-  },
-];
-
-const SEED_EVENTS: OfferEvent[] = [
-  {
-    id: uuid(),
-    offerId: 'offer-001',
-    opportunityId: 'opp-001',
-    accountName: 'Parkveien Borettslag',
-    contactName: 'Erik Andersen',
-    type: 'created',
-    timestamp: now,
-  },
-  {
-    id: uuid(),
-    offerId: 'offer-001',
-    opportunityId: 'opp-001',
-    accountName: 'Parkveien Borettslag',
-    contactName: 'Erik Andersen',
-    type: 'sent',
-    timestamp: now,
-  },
-  {
-    id: uuid(),
-    offerId: 'offer-002',
-    opportunityId: 'opp-002',
-    accountName: 'Fjordheim Sameie',
-    contactName: 'Marte Olsen',
-    type: 'created',
-    timestamp: now,
-  },
-  {
-    id: uuid(),
-    offerId: 'offer-002',
-    opportunityId: 'opp-002',
-    accountName: 'Fjordheim Sameie',
-    contactName: 'Marte Olsen',
-    type: 'sent',
-    timestamp: now,
-  },
-  {
-    id: uuid(),
-    offerId: 'offer-002',
-    opportunityId: 'opp-002',
-    accountName: 'Fjordheim Sameie',
-    contactName: 'Marte Olsen',
-    type: 'viewed',
-    timestamp: now,
-  },
-];
-
 export function ensureSeedData(): void {
   const opportunities = readOpportunities();
-  const offers = readOffers();
-  const events = readEvents();
-
   if (!opportunities.length) {
     writeOpportunities(SEED_OPPORTUNITIES);
   }
-
-  if (!offers.length) {
-    writeOffers(SEED_OFFERS);
-  }
-
-  if (!events.length) {
-    writeEvents(SEED_EVENTS);
-  }
+  // Tilbud og events starter tomme — fylles via CRM-flyten
 }

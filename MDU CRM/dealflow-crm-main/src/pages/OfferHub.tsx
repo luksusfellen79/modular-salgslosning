@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { OFFER_PRODUCTS, OFFER_PACKAGES, OfferPackage } from '@/data/offerHubData';
-import { opportunities as mockOpportunities, Opportunity } from '@/data/mockData';
+import { Opportunity } from '@/data/mockData';
 import { OfferPackageCard, OfferProductCard } from '@/components/offerhub/OfferProductCard';
 import { OfferSalesforcePanel } from '@/components/offerhub/OfferSalesforcePanel';
 import { Send, Copy, CheckCheck, Flag, Wifi, WifiOff } from 'lucide-react';
@@ -47,16 +47,12 @@ function toOpportunity(sc: SalesCoreOpportunity): Opportunity {
   };
 }
 
-// Alle opportunities unntatt tapte
-const localActiveOpps = mockOpportunities.filter((o) => o.stage !== 'closed-lost');
-
 export default function OfferHubPage() {
   const [searchParams] = useSearchParams();
   const preselectedId = searchParams.get('opportunityId');
 
-  // Live opportunities fra Sales Core, med mockData som fallback
-  const [opportunities, setOpportunities] = useState<Opportunity[]>(localActiveOpps);
-  const [isLive, setIsLive] = useState(false);
+  const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
+  const [isLive, setIsLive] = useState<boolean | null>(null); // null = laster
 
   // Aktiv offer-ID (fra Sales Core etter POST)
   const [activeOfferId, setActiveOfferId] = useState<string | null>(null);
@@ -94,7 +90,6 @@ export default function OfferHubPage() {
         }
       })
       .catch(() => {
-        // Sales Core utilgjengelig — beholder mockData (allerede satt)
         setIsLive(false);
       });
   }, []);
@@ -223,13 +218,17 @@ export default function OfferHubPage() {
           {/* Live/offline-indikator */}
           <div className={cn(
             'flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full',
-            isLive
+            isLive === true
               ? 'bg-success/10 text-success'
+              : isLive === false
+              ? 'bg-destructive/10 text-destructive'
               : 'bg-muted text-muted-foreground'
           )}>
-            {isLive
+            {isLive === true
               ? <><Wifi className="w-3 h-3" /> Live – Sales Core</>
-              : <><WifiOff className="w-3 h-3" /> Offline – mockdata</>
+              : isLive === false
+              ? <><WifiOff className="w-3 h-3" /> Sales Core utilgjengelig</>
+              : <><span className="w-3 h-3 animate-spin inline-block border-2 border-current border-t-transparent rounded-full" /> Kobler til...</>
             }
           </div>
         </div>
