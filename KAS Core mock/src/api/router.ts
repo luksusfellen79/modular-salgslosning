@@ -9,11 +9,111 @@ import {
   residents,
   searchResidents,
 } from '../seed';
+import { SDU_PRODUCTS, MDU_PACKAGES, MDU_COMPONENTS } from '../data/products';
 
 export const router = Router();
 
 router.get('/health', (req: Request, res: Response) => {
-  res.json({ status: 'healthy', residents: residents.length, customers: customers.length });
+  res.json({
+    status: 'healthy',
+    residents: residents.length,
+    customers: customers.length,
+    products: {
+      sdu: SDU_PRODUCTS.length,
+      mduPackages: MDU_PACKAGES.length,
+      mduComponents: MDU_COMPONENTS.length,
+    },
+  });
+});
+
+// ─── SDU Product catalog ──────────────────────────────────────────────────────
+
+router.get('/products/sdu', (req: Request, res: Response) => {
+  const { category, hasIncentive, activeOnly } = req.query;
+
+  let products = [...SDU_PRODUCTS];
+
+  if (activeOnly !== 'false') {
+    products = products.filter((p) => p.isActive);
+  }
+
+  if (category) {
+    products = products.filter((p) => p.category === category.toString());
+  }
+
+  if (hasIncentive === 'true') {
+    const now = new Date().toISOString();
+    products = products.filter((p) =>
+      p.incentives.some((i) => i.validFrom <= now && i.validUntil >= now)
+    );
+  }
+
+  res.json(products);
+});
+
+router.get('/products/sdu/:productId', (req: Request, res: Response) => {
+  const product = SDU_PRODUCTS.find((p) => p.productId === req.params.productId);
+
+  if (!product) {
+    return res.status(404).json({ error: 'Product not found' });
+  }
+
+  res.json(product);
+});
+
+// ─── MDU Product catalog ──────────────────────────────────────────────────────
+
+router.get('/products/mdu', (req: Request, res: Response) => {
+  const { tier, hasIncentive, activeOnly } = req.query;
+
+  let packages = [...MDU_PACKAGES];
+
+  if (activeOnly !== 'false') {
+    packages = packages.filter((p) => p.isActive);
+  }
+
+  if (tier) {
+    packages = packages.filter((p) => p.tier === tier.toString());
+  }
+
+  if (hasIncentive === 'true') {
+    const now = new Date().toISOString();
+    packages = packages.filter((p) =>
+      p.incentives.some((i) => i.validFrom <= now && i.validUntil >= now)
+    );
+  }
+
+  res.json(packages);
+});
+
+router.get('/products/mdu/components', (req: Request, res: Response) => {
+  const { category } = req.query;
+
+  let components = [...MDU_COMPONENTS];
+
+  if (category) {
+    components = components.filter((c) => c.category === category.toString());
+  }
+
+  res.json(components);
+});
+
+router.get('/products/mdu/:packageId', (req: Request, res: Response) => {
+  const pkg = MDU_PACKAGES.find((p) => p.packageId === req.params.packageId);
+
+  if (!pkg) {
+    return res.status(404).json({ error: 'Package not found' });
+  }
+
+  // Embed full component objects for convenience
+  const defaultComponents = MDU_COMPONENTS.filter((c) =>
+    pkg.defaultComponents.includes(c.componentId)
+  );
+  const availableComponents = MDU_COMPONENTS.filter((c) =>
+    pkg.availableComponents.includes(c.componentId)
+  );
+
+  res.json({ ...pkg, defaultComponents, availableComponents });
 });
 
 router.get('/buildings/:buildingId/residents', (req: Request, res: Response) => {
