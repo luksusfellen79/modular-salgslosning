@@ -43,7 +43,8 @@ const nowStr = () => new Date().toLocaleString('nb-NO', { dateStyle: 'short', ti
 
 interface Agency { id: string; name: string; sfId: string; email: string; }
 
-interface Proposal {
+interface ProductProposal {
+  type: 'product';
   id: string;
   agencyId: string;
   agencyName: string;
@@ -55,6 +56,21 @@ interface Proposal {
   createdAt: string;
   note?: string;
 }
+
+interface BonusProposal {
+  type: 'bonus';
+  id: string;
+  agencyId: string;
+  agencyName: string;
+  tier: string;
+  oldVal: number;
+  newVal: number;
+  status: 'pending' | 'approved' | 'rejected' | 'live';
+  createdAt: string;
+  note?: string;
+}
+
+type Proposal = ProductProposal | BonusProposal;
 
 interface AuditEntry {
   id: string;
@@ -286,6 +302,58 @@ function ProposeModal({ target, onSave, onClose }: {
   );
 }
 
+// ─── PROPOSE BONUS MODAL ─────────────────────────────────────────────────────
+interface ProposeBonusTarget {
+  agency: Agency;
+  tier: string;
+  currentVal: number;
+}
+
+function ProposeBonusModal({ target, onSave, onClose }: {
+  target: ProposeBonusTarget;
+  onSave: (newVal: number, note: string) => void;
+  onClose: () => void;
+}) {
+  const [newVal, setNewVal] = useState(target.currentVal);
+  const [note, setNote]     = useState('');
+
+  return (
+    <div style={s.overlay} onClick={onClose}>
+      <div style={{ ...s.modal, width: 400 }} onClick={e => e.stopPropagation()}>
+        <div style={s.modalTitle}>Endre bonusnivå</div>
+        <div style={s.modalSubtitle}>{target.agency.name} · Trinn {target.tier} salg</div>
+
+        <div style={s.formGroup}>
+          <label style={s.formLabel}>Gjeldende bonus på nivå</label>
+          <div style={{ ...s.formInput, background: T.gray50, color: T.gray400 }}>
+            + {target.currentVal.toLocaleString('nb-NO')} kr
+          </div>
+        </div>
+        <div style={s.formGroup}>
+          <label style={s.formLabel}>Ny bonus på nivå (NOK)</label>
+          <input style={s.formInput} type="number" step="50" value={newVal}
+            onChange={e => setNewVal(Number(e.target.value))} />
+          <span style={{ fontSize: 11, color: T.gray400, marginTop: 2 }}>
+            Differanse: {(newVal - target.currentVal >= 0 ? '+' : '')}{(newVal - target.currentVal).toLocaleString('nb-NO')} kr
+          </span>
+        </div>
+        <div style={s.formGroup}>
+          <label style={s.formLabel}>Notat til byrå</label>
+          <input style={s.formInput} placeholder="Begrunnelse (valgfri)"
+            value={note} onChange={e => setNote(e.target.value)} />
+        </div>
+        <div style={s.formRow}>
+          <button style={s.cancelBtn} onClick={onClose}>Avbryt</button>
+          <button style={s.saveBtn(T.blue)} onClick={() => onSave(newVal, note)}
+            disabled={newVal === target.currentVal}>
+            Send til byrå for godkjenning
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── AGENCY APPROVAL VIEW ─────────────────────────────────────────────────────
 function AgencyApprovalView({ agency, proposals, onApprove, onReject }: {
   agency: Agency;
@@ -307,20 +375,48 @@ function AgencyApprovalView({ agency, proposals, onApprove, onReject }: {
         <div key={p.id} style={{ ...s.card, marginBottom: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
-              <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 2 }}>{p.productName}</div>
-              <div style={{ fontSize: 13, color: T.gray400 }}>{p.category} · {p.incentive.name}</div>
+              {p.type === 'bonus' ? (
+                <>
+                  <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 2 }}>Bonustrapp — trinn {p.tier} salg</div>
+                  <div style={{ fontSize: 13, color: T.gray400 }}>Volum-bonus endring</div>
+                </>
+              ) : (
+                <>
+                  <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 2 }}>{p.productName}</div>
+                  <div style={{ fontSize: 13, color: T.gray400 }}>{p.category} · {p.incentive.name}</div>
+                </>
+              )}
               {p.note && <div style={{ fontSize: 13, color: T.gray600, marginTop: 6, fontStyle: 'italic' }}>"{p.note}"</div>}
             </div>
             <Chip status="pending" />
           </div>
-          <div style={{ marginTop: 14, padding: '12px 14px', background: T.gray50, borderRadius: 8, fontSize: 13 }}>
-            <div><span style={{ color: T.gray400 }}>Type: </span>{p.incentive.type}</div>
-            <div style={{ marginTop: 4 }}><span style={{ color: T.gray400 }}>Verdi: </span><strong>{formatIncentive(p.incentive)}</strong></div>
-            <div style={{ marginTop: 4, color: T.gray400, fontSize: 12 }}>
-              {p.incentive.validFrom} → {p.incentive.validUntil}
-              {p.incentive.visibleToSeller && <span style={{ marginLeft: 8, color: T.blue }}>· Synlig i CRM</span>}
+
+          {p.type === 'bonus' ? (
+            <div style={{ display: 'flex', gap: 24, marginTop: 14, padding: '14px', background: T.gray50, borderRadius: 8, alignItems: 'center' }}>
+              <div>
+                <div style={{ fontSize: 12, color: T.gray400 }}>Nåværende bonus</div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: T.gray600 }}>+ {p.oldVal.toLocaleString('nb-NO')} kr</div>
+              </div>
+              <div style={{ fontSize: 20, color: T.gray200 }}>→</div>
+              <div>
+                <div style={{ fontSize: 12, color: T.gray400 }}>Foreslått bonus</div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: T.blue }}>+ {p.newVal.toLocaleString('nb-NO')} kr</div>
+              </div>
+              <div style={{ marginLeft: 'auto', fontSize: 13, color: p.newVal > p.oldVal ? T.green : T.red, fontWeight: 700 }}>
+                {p.newVal > p.oldVal ? '+' : ''}{(p.newVal - p.oldVal).toLocaleString('nb-NO')} kr
+              </div>
             </div>
-          </div>
+          ) : (
+            <div style={{ marginTop: 14, padding: '12px 14px', background: T.gray50, borderRadius: 8, fontSize: 13 }}>
+              <div><span style={{ color: T.gray400 }}>Type: </span>{p.incentive.type}</div>
+              <div style={{ marginTop: 4 }}><span style={{ color: T.gray400 }}>Verdi: </span><strong>{formatIncentive(p.incentive)}</strong></div>
+              <div style={{ marginTop: 4, color: T.gray400, fontSize: 12 }}>
+                {p.incentive.validFrom} → {p.incentive.validUntil}
+                {p.incentive.visibleToSeller && <span style={{ marginLeft: 8, color: T.blue }}>· Synlig i CRM</span>}
+              </div>
+            </div>
+          )}
+
           <div style={{ display: 'flex', gap: 8, marginTop: 14, paddingTop: 14, borderTop: `1px solid ${T.gray100}` }}>
             <button style={{ ...s.saveBtn(T.red), flex: 'none', padding: '9px 20px' }} onClick={() => onReject(p.id)}>Avvis</button>
             <button style={{ ...s.saveBtn(T.green), flex: 'none', padding: '9px 20px' }} onClick={() => onApprove(p.id)}>Godkjenn og sett live</button>
@@ -332,13 +428,14 @@ function AgencyApprovalView({ agency, proposals, onApprove, onReject }: {
 }
 
 // ─── INCENTIVE VIEW (Telenor) ─────────────────────────────────────────────────
-function IncentiveView({ agencies, products, loading, proposals, bonusLadder, onPropose, activeAgencyId, setActiveAgencyId, onRemoveIncentive }: {
+function IncentiveView({ agencies, products, loading, proposals, bonusLadder, onPropose, onProposeBonus, activeAgencyId, setActiveAgencyId, onRemoveIncentive }: {
   agencies: Agency[];
   products: SDUProduct[];
   loading: boolean;
   proposals: Proposal[];
   bonusLadder: Record<string, Record<string, number>>;
   onPropose: (target: ProposeTarget) => void;
+  onProposeBonus: (target: ProposeBonusTarget) => void;
   activeAgencyId: string;
   setActiveAgencyId: (id: string) => void;
   onRemoveIncentive: (product: SDUProduct, inc: Incentive) => void;
@@ -351,7 +448,7 @@ function IncentiveView({ agencies, products, loading, proposals, bonusLadder, on
   const agency = agencies.find(a => a.id === activeAgencyId) ?? agencies[0];
 
   const getPendingForProduct = (productId: string) =>
-    proposals.filter(p => p.agencyId === activeAgencyId && p.productId === productId && p.status === 'pending');
+    proposals.filter(p => p.type === 'product' && p.agencyId === activeAgencyId && p.productId === productId && p.status === 'pending') as ProductProposal[];
 
   if (!agencies.length) return <div style={s.page}><div style={s.emptyState}>Ingen byråer. Gå til Admin.</div></div>;
 
@@ -420,7 +517,7 @@ function IncentiveView({ agencies, products, loading, proposals, bonusLadder, on
                       {/* Pending proposals */}
                       {pending.length > 0 && (
                         <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                          {pending.map(p => (
+                          {pending.map((p: ProductProposal) => (
                             <span key={p.id} style={{ background: T.amberLight, border: `1px solid ${T.amber}60`, color: '#92400e', borderRadius: 5, padding: '2px 8px', fontSize: 11, fontWeight: 600 }}>
                               ⏳ {formatIncentive(p.incentive)}
                             </span>
@@ -452,6 +549,7 @@ function IncentiveView({ agencies, products, loading, proposals, bonusLadder, on
                     <th style={s.bonusTh}>Salg</th>
                     <th style={{ ...s.bonusTh, textAlign: 'right' }}>Bonus på nivå</th>
                     <th style={{ ...s.bonusTh, textAlign: 'right' }}>Kumulativt</th>
+                    <th style={{ ...s.bonusTh, width: 70 }} />
                   </tr>
                 </thead>
                 <tbody>
@@ -460,14 +558,37 @@ function IncentiveView({ agencies, products, loading, proposals, bonusLadder, on
                     let cumulative = 0;
                     return entries.map(([tier, amt]) => {
                       cumulative += amt;
+                      const pendingBonus = proposals.find(
+                        p => p.type === 'bonus' && p.agencyId === activeAgencyId && p.tier === tier && p.status === 'pending'
+                      ) as BonusProposal | undefined;
                       return (
                         <tr key={tier}>
                           <td style={s.bonusTd}><span style={s.tierBadge}>{tier}</span></td>
-                          <td style={{ ...s.bonusTd, textAlign: 'right', color: T.gray600 }}>
-                            + {amt.toLocaleString('nb-NO')} kr
+                          <td style={{ ...s.bonusTd, textAlign: 'right' }}>
+                            {pendingBonus ? (
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                <span style={{ color: T.gray400, textDecoration: 'line-through', fontSize: 13 }}>
+                                  + {amt.toLocaleString('nb-NO')} kr
+                                </span>
+                                <span style={{ background: T.amberLight, border: `1px solid ${T.amber}60`, color: '#92400e', borderRadius: 8, padding: '4px 10px', fontSize: 13, fontWeight: 700 }}>
+                                  + {pendingBonus.newVal.toLocaleString('nb-NO')} kr ⏳
+                                </span>
+                              </span>
+                            ) : (
+                              <span style={{ color: T.gray600, fontWeight: 500 }}>
+                                + {amt.toLocaleString('nb-NO')} kr
+                              </span>
+                            )}
                           </td>
                           <td style={{ ...s.bonusTd, ...s.bonusAmt }}>
                             {cumulative.toLocaleString('nb-NO')} kr
+                          </td>
+                          <td style={{ ...s.bonusTd, textAlign: 'right' }}>
+                            {!pendingBonus && (
+                              <button style={s.proposeBtn} onClick={() => onProposeBonus({ agency: agency!, tier, currentVal: amt })}>
+                                Endre
+                              </button>
+                            )}
                           </td>
                         </tr>
                       );
@@ -623,7 +744,7 @@ export default function App() {
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [kasOk, setKasOk]            = useState(false);
 
-  const [bonusLadder] = useState<Record<string, Record<string, number>>>(() => {
+  const [bonusLadder, setBonusLadder] = useState<Record<string, Record<string, number>>>(() => {
     const d: Record<string, Record<string, number>> = {};
     INIT_AGENCIES.forEach(ag => {
       d[ag.id] = {};
@@ -637,7 +758,8 @@ export default function App() {
   const [proposals, setProposals]   = useState<Proposal[]>([]);
   const [auditLog, setAuditLog]     = useState<AuditEntry[]>([]);
   const [toast, setToast]           = useState('');
-  const [proposingFor, setProposingFor] = useState<ProposeTarget | null>(null);
+  const [proposingFor, setProposingFor]         = useState<ProposeTarget | null>(null);
+  const [proposingBonus, setProposingBonus]     = useState<ProposeBonusTarget | null>(null);
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 2800); };
 
@@ -653,6 +775,7 @@ export default function App() {
 
   const handlePropose = (target: ProposeTarget, inc: Omit<Incentive, 'id'>, note: string) => {
     setProposals(prev => [...prev, {
+      type: 'product' as const,
       id: uid(),
       agencyId: target.agency.id,
       agencyName: target.agency.name,
@@ -668,10 +791,43 @@ export default function App() {
     setProposingFor(null);
   };
 
+  const handleProposeBonus = (target: ProposeBonusTarget, newVal: number, note: string) => {
+    setProposals(prev => [...prev, {
+      type: 'bonus',
+      id: uid(),
+      agencyId: target.agency.id,
+      agencyName: target.agency.name,
+      tier: target.tier,
+      oldVal: target.currentVal,
+      newVal,
+      status: 'pending',
+      createdAt: nowStr(),
+      note,
+    }]);
+    showToast(`Bonusforslag sendt til ${target.agency.name}`);
+    setProposingBonus(null);
+  };
+
   const handleApprove = async (proposalId: string) => {
     const p = proposals.find(x => x.id === proposalId);
     if (!p) return;
     setProposals(prev => prev.map(x => x.id === proposalId ? { ...x, status: 'live' } : x));
+
+    if (p.type === 'bonus') {
+      setBonusLadder(prev => ({
+        ...prev,
+        [p.agencyId]: { ...prev[p.agencyId], [p.tier]: p.newVal },
+      }));
+      setAuditLog(prev => [...prev, {
+        id: uid(), ts: nowStr(), agencyName: p.agencyName,
+        productName: `Bonustrapp trinn ${p.tier}`, category: 'bonus',
+        incentiveName: `${p.oldVal.toLocaleString('nb-NO')} → ${p.newVal.toLocaleString('nb-NO')} kr`,
+        action: 'live', changedBy: p.agencyName,
+      }]);
+      showToast(`Bonusnivå ${p.tier} oppdatert`);
+      return;
+    }
+
     setAuditLog(prev => [...prev, {
       id: uid(), ts: nowStr(), agencyName: p.agencyName,
       productName: p.productName, category: p.category,
@@ -683,7 +839,6 @@ export default function App() {
       showToast('Insentiv godkjent og live i KAS Core');
     } catch {
       showToast('Godkjent (KAS Core offline — lokal oppdatering)');
-      // Optimistic local update
       setProducts(prev => prev.map(prod =>
         prod.productId === p.productId
           ? { ...prod, incentives: [...prod.incentives, { ...p.incentive, id: uid() }] }
@@ -696,11 +851,20 @@ export default function App() {
     const p = proposals.find(x => x.id === proposalId);
     if (!p) return;
     setProposals(prev => prev.map(x => x.id === proposalId ? { ...x, status: 'rejected' } : x));
-    setAuditLog(prev => [...prev, {
-      id: uid(), ts: nowStr(), agencyName: p.agencyName,
-      productName: p.productName, category: p.category,
-      incentiveName: p.incentive.name, action: 'rejected', changedBy: p.agencyName,
-    }]);
+    if (p.type === 'bonus') {
+      setAuditLog(prev => [...prev, {
+        id: uid(), ts: nowStr(), agencyName: p.agencyName,
+        productName: `Bonustrapp trinn ${p.tier}`, category: 'bonus',
+        incentiveName: `${p.oldVal.toLocaleString('nb-NO')} → ${p.newVal.toLocaleString('nb-NO')} kr`,
+        action: 'rejected', changedBy: p.agencyName,
+      }]);
+    } else {
+      setAuditLog(prev => [...prev, {
+        id: uid(), ts: nowStr(), agencyName: p.agencyName,
+        productName: p.productName, category: p.category,
+        incentiveName: p.incentive.name, action: 'rejected', changedBy: p.agencyName,
+      }]);
+    }
     showToast('Forslag avvist');
   };
 
@@ -801,6 +965,7 @@ export default function App() {
           proposals={proposals}
           bonusLadder={bonusLadder}
           onPropose={setProposingFor}
+          onProposeBonus={setProposingBonus}
           activeAgencyId={activeAgencyId}
           setActiveAgencyId={setActiveAgencyId}
           onRemoveIncentive={handleRemoveIncentive}
@@ -818,12 +983,26 @@ export default function App() {
             <div key={p.id} style={{ ...s.card, marginBottom: 12 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
-                  <div style={{ fontWeight: 700, fontSize: 14 }}>{p.agencyName} · {p.productName}</div>
-                  <div style={{ fontSize: 12, color: T.gray400, marginTop: 2 }}>{p.category} · {p.incentive.name} · Sendt {p.createdAt}</div>
+                  {p.type === 'bonus' ? (
+                    <>
+                      <div style={{ fontWeight: 700, fontSize: 14 }}>{p.agencyName} · Bonustrapp trinn {p.tier}</div>
+                      <div style={{ fontSize: 12, color: T.gray400, marginTop: 2 }}>Volum-bonus · Sendt {p.createdAt}</div>
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ fontWeight: 700, fontSize: 14 }}>{p.agencyName} · {p.productName}</div>
+                      <div style={{ fontSize: 12, color: T.gray400, marginTop: 2 }}>{p.category} · {p.incentive.name} · Sendt {p.createdAt}</div>
+                    </>
+                  )}
                   {p.note && <div style={{ fontSize: 12, color: T.gray600, marginTop: 4, fontStyle: 'italic' }}>"{p.note}"</div>}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <span style={{ fontWeight: 700, color: T.blue }}>{formatIncentive(p.incentive)}</span>
+                  <span style={{ fontWeight: 700, color: T.blue }}>
+                    {p.type === 'bonus'
+                      ? `+${p.newVal.toLocaleString('nb-NO')} kr`
+                      : formatIncentive(p.incentive)
+                    }
+                  </span>
                   <Chip status="pending" />
                 </div>
               </div>
@@ -836,12 +1015,21 @@ export default function App() {
         <AdminView agencies={agencies} setAgencies={setAgencies} auditLog={auditLog} />
       )}
 
-      {/* Propose modal */}
+      {/* Propose product incentive modal */}
       {proposingFor && (
         <ProposeModal
           target={proposingFor}
           onClose={() => setProposingFor(null)}
           onSave={(inc, note) => handlePropose(proposingFor, inc, note)}
+        />
+      )}
+
+      {/* Propose bonus change modal */}
+      {proposingBonus && (
+        <ProposeBonusModal
+          target={proposingBonus}
+          onClose={() => setProposingBonus(null)}
+          onSave={(newVal, note) => handleProposeBonus(proposingBonus, newVal, note)}
         />
       )}
 
