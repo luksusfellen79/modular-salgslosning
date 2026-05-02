@@ -733,9 +733,163 @@ function AdminView({ agencies, setAgencies, auditLog }: {
   );
 }
 
+// ─── AGENCIES VIEW ────────────────────────────────────────────────────────────
+function AgenciesView({ agencies, setAgencies, proposals, bonusLadder, products }: {
+  agencies: Agency[];
+  setAgencies: (fn: (prev: Agency[]) => Agency[]) => void;
+  proposals: Proposal[];
+  bonusLadder: Record<string, Record<string, number>>;
+  products: SDUProduct[];
+}) {
+  const [showForm, setShowForm]   = useState(false);
+  const [form, setForm]           = useState({ name: '', sfId: '', email: '' });
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  const save = () => {
+    if (!form.name.trim()) return;
+    if (editingId) {
+      setAgencies(prev => prev.map(a => a.id === editingId ? { ...a, ...form } : a));
+    } else {
+      setAgencies(prev => [...prev, { id: uid(), ...form }]);
+    }
+    setForm({ name: '', sfId: '', email: '' }); setShowForm(false); setEditingId(null);
+  };
+  const startEdit = (ag: Agency) => {
+    setEditingId(ag.id); setForm({ name: ag.name, sfId: ag.sfId, email: ag.email }); setShowForm(true);
+  };
+  const del = (id: string) => setAgencies(prev => prev.filter(a => a.id !== id));
+  const cancel = () => { setShowForm(false); setEditingId(null); setForm({ name: '', sfId: '', email: '' }); };
+
+  const pendingCount = (agId: string) =>
+    proposals.filter(p => p.agencyId === agId && p.status === 'pending').length;
+
+  const activeIncentiveCount = (agId: string) => {
+    // Count products with at least one active incentive proposed or live for this agency
+    const now = new Date().toISOString();
+    const liveProductIds = new Set(
+      (proposals.filter(p => p.type === 'product' && p.agencyId === agId && p.status === 'live') as ProductProposal[])
+        .map(p => p.productId)
+    );
+    return products.filter(prod =>
+      liveProductIds.has(prod.productId) || prod.incentives.some(i => i.validFrom <= now && i.validUntil >= now)
+    ).length;
+  };
+
+  const topBonusTier = (agId: string) => {
+    const ladder = bonusLadder[agId] ?? {};
+    const entries = Object.entries(ladder);
+    if (!entries.length) return null;
+    let cum = 0;
+    entries.forEach(([, v]) => { cum += v; });
+    return cum;
+  };
+
+  return (
+    <div style={s.page}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+        <h1 style={{ ...s.pageHeading, margin: 0 }}>Byråer</h1>
+        <button style={s.addBtn} onClick={() => { cancel(); setShowForm(true); }}>+ Legg til byrå</button>
+      </div>
+      <p style={s.pageSubheading}>Oversikt over alle tilknyttede salgsbyråer og deres incentivstatus</p>
+
+      {showForm && (
+        <div style={{ ...s.inlineForm, marginBottom: 24 }}>
+          <div style={s.inlineFormTitle}>{editingId ? 'Rediger byrå' : 'Nytt byrå'}</div>
+          <div style={s.inlineFormRow}>
+            <div style={s.inlineFg}>
+              <label style={s.inlineLabel}>Navn</label>
+              <input style={s.inlineInput} placeholder="Byrånavn" value={form.name}
+                onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+            </div>
+            <div style={s.inlineFg}>
+              <label style={s.inlineLabel}>E-post</label>
+              <input style={s.inlineInput} type="email" placeholder="post@byra.no" value={form.email}
+                onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
+            </div>
+            <div style={s.inlineFg}>
+              <label style={s.inlineLabel}>Salesforce ID</label>
+              <input style={s.inlineInput} placeholder="001XX…" value={form.sfId}
+                onChange={e => setForm(f => ({ ...f, sfId: e.target.value }))}
+                onKeyDown={e => e.key === 'Enter' && save()} />
+            </div>
+            <button style={s.inlineSave} onClick={save}>Lagre</button>
+            <button style={s.inlineCancel} onClick={cancel}>Avbryt</button>
+          </div>
+        </div>
+      )}
+
+      {!agencies.length && (
+        <div style={{ ...s.emptyState, padding: '60px 0' }}>Ingen byråer. Legg til ditt første byrå.</div>
+      )}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 20 }}>
+        {agencies.map(ag => {
+          const pending = pendingCount(ag.id);
+          const activeInc = activeIncentiveCount(ag.id);
+          const maxBonus = topBonusTier(ag.id);
+          const ladder = bonusLadder[ag.id] ?? {};
+          const topTier = Object.keys(ladder).sort((a, b) => Number(b) - Number(a))[0];
+
+          return (
+            <div key={ag.id} style={{ ...s.card, display: 'flex', flexDirection: 'column', gap: 0 }}>
+              {/* Header */}
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ width: 44, height: 44, borderRadius: 10, background: T.blueLight, border: `1.5px solid ${T.blueMid}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>
+                    🏢
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: T.gray800 }}>{ag.name}</div>
+                    {ag.email && <div style={{ fontSize: 12, color: T.blue, marginTop: 2 }}>{ag.email}</div>}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button style={s.iconBtn(T.blue)} onClick={() => startEdit(ag)} title="Rediger">✏️</button>
+                  <button style={s.iconBtn(T.red)}  onClick={() => del(ag.id)} title="Slett">🗑</button>
+                </div>
+              </div>
+
+              {/* Stats row */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 16 }}>
+                <div style={{ textAlign: 'center', padding: '10px 8px', background: pending > 0 ? T.amberLight : T.gray50, borderRadius: 8, border: `1px solid ${pending > 0 ? T.amber + '50' : T.gray100}` }}>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: pending > 0 ? '#92400e' : T.gray400 }}>{pending}</div>
+                  <div style={{ fontSize: 10, color: pending > 0 ? '#92400e' : T.gray400, marginTop: 2, textTransform: 'uppercase', letterSpacing: 0.5 }}>Venter</div>
+                </div>
+                <div style={{ textAlign: 'center', padding: '10px 8px', background: T.greenLight, borderRadius: 8, border: `1px solid ${T.green}20` }}>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: T.green }}>{activeInc}</div>
+                  <div style={{ fontSize: 10, color: T.green, marginTop: 2, textTransform: 'uppercase', letterSpacing: 0.5 }}>Insentiver</div>
+                </div>
+                <div style={{ textAlign: 'center', padding: '10px 8px', background: T.blueLight, borderRadius: 8, border: `1px solid ${T.blueMid}` }}>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: T.blue }}>{topTier ?? '—'}</div>
+                  <div style={{ fontSize: 10, color: T.blue, marginTop: 2, textTransform: 'uppercase', letterSpacing: 0.5 }}>Topp trinn</div>
+                </div>
+              </div>
+
+              {/* Bonus summary */}
+              {maxBonus !== null && (
+                <div style={{ padding: '10px 12px', background: T.gray50, borderRadius: 8, marginBottom: 12, border: `1px solid ${T.gray100}` }}>
+                  <div style={{ fontSize: 11, color: T.gray400, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>Max kumulativ bonus</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: T.green }}>{maxBonus.toLocaleString('nb-NO')} kr</div>
+                </div>
+              )}
+
+              {/* SF ID */}
+              {ag.sfId && (
+                <div style={{ fontSize: 11, color: T.gray400, fontFamily: 'monospace', marginTop: 'auto', paddingTop: 10, borderTop: `1px solid ${T.gray100}` }}>
+                  SF: {ag.sfId}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ─── APP ──────────────────────────────────────────────────────────────────────
 export default function App() {
-  const [page, setPage]               = useState<'incentives' | 'approvals' | 'admin'>('incentives');
+  const [page, setPage]               = useState<'incentives' | 'approvals' | 'agencies' | 'admin'>('incentives');
   const [userRole, setUserRole]       = useState<'telenor' | 'agency'>('telenor');
   const [activeAgencyId, setActiveAgencyId] = useState('ag1');
 
@@ -913,6 +1067,7 @@ export default function App() {
                 Godkjenninger
                 {totalPending > 0 && <span style={s.pendingBadge}>{totalPending}</span>}
               </button>
+              <button style={s.navTab(page === 'agencies')} onClick={() => setPage('agencies')}>Byråer</button>
               <button style={s.navTab(page === 'admin')} onClick={() => setPage('admin')}>⚙ Admin</button>
             </>
           )}
@@ -1009,6 +1164,16 @@ export default function App() {
             </div>
           ))}
         </div>
+      )}
+
+      {userRole === 'telenor' && page === 'agencies' && (
+        <AgenciesView
+          agencies={agencies}
+          setAgencies={setAgencies}
+          proposals={proposals}
+          bonusLadder={bonusLadder}
+          products={products}
+        />
       )}
 
       {userRole === 'telenor' && page === 'admin' && (
