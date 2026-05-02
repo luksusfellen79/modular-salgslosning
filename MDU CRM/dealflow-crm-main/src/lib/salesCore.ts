@@ -2,8 +2,7 @@
  * Sales Core API client
  *
  * Wrapper rundt Sales Core REST API (port 3005).
- * Alle funksjoner kaster feil ved nettverksfeil — kaller skal håndtere
- * med try/catch og fallback til mockData ved behov.
+ * Alle funksjoner kaster feil ved nettverksfeil — kaller skal håndtere med try/catch.
  */
 
 const BASE_URL = (import.meta.env.VITE_SALES_CORE_URL as string | undefined) ?? 'http://localhost:3005';
@@ -17,6 +16,20 @@ export interface SalesCoreOpportunity {
   contactName: string | null;
   contactEmail: string | null;
   stage: string;
+  closeDate: string;
+  estimatedAnnualValue: number;
+  units: number;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateOpportunityPayload {
+  name: string;
+  accountName: string;
+  contactName?: string;
+  contactEmail?: string;
+  stage?: string;
   closeDate: string;
   estimatedAnnualValue: number;
   units: number;
@@ -60,7 +73,6 @@ export interface CreateOfferPayload {
   units: number;
   notes?: string;
   salesRepName: string;
-  /** ISO-dato tilbudet gjelder til. Standard: 30 dager fra nå. */
   validUntil?: string;
 }
 
@@ -84,10 +96,25 @@ export async function fetchOpportunities(): Promise<SalesCoreOpportunity[]> {
   return apiFetch<SalesCoreOpportunity[]>('/api/opportunities');
 }
 
+export async function createOpportunity(data: CreateOpportunityPayload): Promise<SalesCoreOpportunity> {
+  return apiFetch<SalesCoreOpportunity>('/api/opportunities', {
+    method: 'POST',
+    body: JSON.stringify({ stage: 'prospect', ...data }),
+  });
+}
+
 // ─── Offers ───────────────────────────────────────────────────────────────────
 
+export async function fetchOffers(): Promise<SalesCoreOffer[]> {
+  return apiFetch<SalesCoreOffer[]>('/api/offers');
+}
+
+export async function fetchOffersByOpportunity(opportunityId: string): Promise<SalesCoreOffer[]> {
+  const all = await fetchOffers();
+  return all.filter((o) => o.opportunityId === opportunityId);
+}
+
 export async function createOffer(data: CreateOfferPayload): Promise<SalesCoreOffer> {
-  // Sett validUntil til 30 dager frem i tid hvis ikke angitt
   const validUntil =
     data.validUntil ??
     new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];

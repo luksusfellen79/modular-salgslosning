@@ -1,47 +1,33 @@
-import { X, Phone, Mail, Video, CheckSquare, Building2, User, Calendar, DollarSign, TrendingUp, ArrowRight, FileText } from 'lucide-react';
-import { Opportunity, Activity, HistoryEntry, Product, activities as allActivities, historyEntries as allHistory, products as allProducts, formatCurrency, formatDate, formatDateTime } from '@/data/mockData';
-import { useState } from 'react';
+import { X, Phone, Mail, Video, CheckSquare, Building2, User, Calendar, DollarSign, TrendingUp, ArrowRight, FileText, Send, ExternalLink, Loader2 } from 'lucide-react';
+import { Opportunity, formatCurrency, formatDate, formatDateTime } from '@/data/mockData';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { fetchOffersByOpportunity, SalesCoreOffer } from '@/lib/salesCore';
+import { cn } from '@/lib/utils';
 
 interface SidePanelProps {
   deal: Opportunity;
   onClose: () => void;
 }
 
-const tabs = ['Overview', 'Activities', 'Products', 'History'] as const;
+const tabs = ['Overview', 'Tilbud', 'Aktivitet'] as const;
 
-function ActivityIcon({ type }: { type: Activity['type'] }) {
-  const cls = 'w-4 h-4';
-  switch (type) {
-    case 'call': return <Phone className={cls} />;
-    case 'email': return <Mail className={cls} />;
-    case 'meeting': return <Video className={cls} />;
-    case 'task': return <CheckSquare className={cls} />;
-  }
-}
-
-function activityColor(type: Activity['type']) {
-  switch (type) {
-    case 'call': return 'bg-primary/10 text-primary';
-    case 'email': return 'bg-stage-proposal/10 text-stage-proposal';
-    case 'meeting': return 'bg-stage-qualification/10 text-stage-qualification';
-    case 'task': return 'bg-success/10 text-success';
-  }
-}
+const offerStatusLabel: Record<string, { label: string; cls: string }> = {
+  draft:    { label: 'Kladd',    cls: 'bg-muted text-muted-foreground' },
+  sent:     { label: 'Sendt',    cls: 'bg-primary/10 text-primary' },
+  viewed:   { label: 'Åpnet',   cls: 'bg-amber-500/10 text-amber-600' },
+  accepted: { label: 'Akseptert', cls: 'bg-success/10 text-success' },
+  declined: { label: 'Avslått', cls: 'bg-destructive/10 text-destructive' },
+  expired:  { label: 'Utgått',  cls: 'bg-muted text-muted-foreground' },
+};
 
 export function SidePanel({ deal, onClose }: SidePanelProps) {
   const [activeTab, setActiveTab] = useState<typeof tabs[number]>('Overview');
   const navigate = useNavigate();
-  const dealActivities = allActivities.filter((a) => a.opportunityId === deal.id);
-  const dealHistory = allHistory.filter((h) => h.opportunityId === deal.id);
-  const dealProducts = allProducts.filter((p) => p.opportunityId === deal.id);
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end" onClick={onClose}>
-      {/* Backdrop */}
       <div className="absolute inset-0 bg-foreground/20 backdrop-blur-sm" />
-
-      {/* Panel */}
       <div
         className="relative w-full max-w-lg bg-card shadow-2xl border-l border-border flex flex-col animate-in slide-in-from-right duration-300"
         onClick={(e) => e.stopPropagation()}
@@ -102,9 +88,8 @@ export function SidePanel({ deal, onClose }: SidePanelProps) {
         {/* Content */}
         <div className="flex-1 overflow-y-auto scrollbar-thin p-6">
           {activeTab === 'Overview' && <OverviewTab deal={deal} />}
-          {activeTab === 'Activities' && <ActivitiesTab activities={dealActivities} />}
-          {activeTab === 'Products' && <ProductsTab products={dealProducts} />}
-          {activeTab === 'History' && <HistoryTab history={dealHistory} />}
+          {activeTab === 'Tilbud' && <OffersTab dealId={deal.id} onNavigate={() => { onClose(); navigate(`/offer-hub?opportunityId=${deal.id}`); }} />}
+          {activeTab === 'Aktivitet' && <ActivityTab />}
         </div>
       </div>
     </div>
@@ -114,12 +99,12 @@ export function SidePanel({ deal, onClose }: SidePanelProps) {
 function OverviewTab({ deal }: { deal: Opportunity }) {
   const fields = [
     { icon: Building2, label: 'Account', value: deal.accountName },
-    { icon: User, label: 'Contact', value: deal.contactName || '—' },
-    { icon: Mail, label: 'Email', value: deal.contactEmail || '—' },
-    { icon: Phone, label: 'Phone', value: deal.phone || '—' },
-    { icon: TrendingUp, label: 'Source', value: deal.source || '—' },
+    { icon: User, label: 'Kontakt', value: deal.contactName || '—' },
+    { icon: Mail, label: 'E-post', value: deal.contactEmail || '—' },
+    { icon: Phone, label: 'Telefon', value: deal.phone || '—' },
+    { icon: TrendingUp, label: 'Kilde', value: deal.source || '—' },
     { icon: CheckSquare, label: 'Type', value: deal.type || '—' },
-    { icon: Calendar, label: 'Created', value: formatDate(deal.createdDate) },
+    { icon: Calendar, label: 'Opprettet', value: deal.createdDate ? formatDate(deal.createdDate) : '—' },
   ];
 
   return (
@@ -138,21 +123,101 @@ function OverviewTab({ deal }: { deal: Opportunity }) {
   );
 }
 
-function ActivitiesTab({ activities }: { activities: Activity[] }) {
+function OffersTab({ dealId, onNavigate }: { dealId: string; onNavigate: () => void }) {
+  const [offers, setOffers] = useState<SalesCoreOffer[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchOffersByOpportunity(dealId)
+      .then(setOffers)
+      .catch(() => setOffers([]))
+      .finally(() => setLoading(false));
+  }, [dealId]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center gap-2 text-muted-foreground py-6 justify-center">
+        <Loader2 className="w-4 h-4 animate-spin" /> <span className="text-sm">Henter tilbud...</span>
+      </div>
+    );
+  }
+
+  if (offers.length === 0) {
+    return (
+      <div className="flex flex-col items-center py-10 gap-3 text-center">
+        <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
+          <Send className="w-5 h-5 text-primary" />
+        </div>
+        <p className="text-sm font-medium text-foreground">Ingen tilbud sendt ennå</p>
+        <p className="text-xs text-muted-foreground">Klikk «Bygg tilbud» for å opprette et tilbud for denne dealen.</p>
+        <button
+          onClick={onNavigate}
+          className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors mt-1"
+        >
+          <FileText className="w-3.5 h-3.5" /> Bygg tilbud
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {offers.map((offer) => {
+        const status = offerStatusLabel[offer.status] ?? { label: offer.status, cls: 'bg-muted text-muted-foreground' };
+        return (
+          <div key={offer.id} className="rounded-xl border border-border p-4 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold text-foreground">{offer.packageName}</span>
+              <span className={cn('text-xs font-semibold px-2 py-0.5 rounded-full', status.cls)}>
+                {status.label}
+              </span>
+            </div>
+            <div className="flex items-center gap-4 text-xs text-muted-foreground">
+              <span>{offer.monthlyPricePerUnit} kr/mnd</span>
+              <span>· {offer.discountPercent}% rabatt</span>
+              <span>· {offer.units} enheter</span>
+            </div>
+            <div className="flex items-center gap-4 text-xs text-muted-foreground">
+              <span>Gyldig til {offer.validUntil}</span>
+              <span>· {offer.salesRepName}</span>
+            </div>
+            {offer.trackingUrl && (
+              <a
+                href={offer.trackingUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1 text-xs text-primary hover:underline mt-1"
+              >
+                <ExternalLink className="w-3 h-3" /> Åpne kundeportal
+              </a>
+            )}
+          </div>
+        );
+      })}
+      <button
+        onClick={onNavigate}
+        className="w-full flex items-center justify-center gap-2 py-2 rounded-xl border border-dashed border-border text-sm text-muted-foreground hover:text-foreground hover:border-primary transition-colors"
+      >
+        <FileText className="w-4 h-4" /> Nytt tilbud
+      </button>
+    </div>
+  );
+}
+
+function ActivityTab() {
   const quickActions = [
-    { icon: Phone, label: 'Call', type: 'call' as const },
-    { icon: Mail, label: 'Email', type: 'email' as const },
-    { icon: Video, label: 'Meeting', type: 'meeting' as const },
-    { icon: CheckSquare, label: 'Task', type: 'task' as const },
+    { icon: Phone, label: 'Samtale' },
+    { icon: Mail, label: 'E-post' },
+    { icon: Video, label: 'Møte' },
+    { icon: CheckSquare, label: 'Oppgave' },
   ];
 
   return (
     <div className="space-y-5">
-      {/* Quick add */}
       <div className="flex gap-2">
         {quickActions.map((a) => (
           <button
-            key={a.type}
+            key={a.label}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-secondary text-sm font-medium text-foreground hover:bg-primary hover:text-primary-foreground transition-colors"
           >
             <a.icon className="w-3.5 h-3.5" />
@@ -160,80 +225,7 @@ function ActivitiesTab({ activities }: { activities: Activity[] }) {
           </button>
         ))}
       </div>
-
-      {/* Timeline */}
-      <div className="space-y-3">
-        {activities.length === 0 && <p className="text-sm text-muted-foreground">No activities yet.</p>}
-        {activities.map((activity) => (
-          <div key={activity.id} className="flex gap-3 items-start">
-            <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${activityColor(activity.type)}`}>
-              <ActivityIcon type={activity.type} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className={`text-sm font-medium ${activity.completed ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
-                {activity.title}
-              </p>
-              <p className="text-xs text-muted-foreground mt-0.5">{formatDateTime(activity.date)}</p>
-            </div>
-            <input
-              type="checkbox"
-              defaultChecked={activity.completed}
-              className="mt-1 w-4 h-4 rounded border-border text-primary accent-primary"
-            />
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function ProductsTab({ products }: { products: Product[] }) {
-  const total = products.reduce((s, p) => s + p.total, 0);
-
-  return (
-    <div>
-      {products.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No products attached.</p>
-      ) : (
-        <div className="space-y-3">
-          {products.map((p) => (
-            <div key={p.id} className="flex items-center justify-between py-3 border-b border-border last:border-0">
-              <div>
-                <p className="text-sm font-medium text-foreground">{p.name}</p>
-                <p className="text-xs text-muted-foreground">{p.quantity} × {formatCurrency(p.unitPrice)}</p>
-              </div>
-              <span className="text-sm font-semibold text-foreground">{formatCurrency(p.total)}</span>
-            </div>
-          ))}
-          <div className="flex items-center justify-between pt-3 border-t border-border">
-            <span className="text-sm font-semibold text-foreground">Total</span>
-            <span className="text-sm font-bold text-primary">{formatCurrency(total)}</span>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function HistoryTab({ history }: { history: HistoryEntry[] }) {
-  return (
-    <div className="space-y-4">
-      {history.length === 0 && <p className="text-sm text-muted-foreground">No changes recorded.</p>}
-      {history.map((h) => (
-        <div key={h.id} className="flex gap-3 items-start">
-          <div className="w-8 h-8 rounded-lg bg-secondary flex items-center justify-center shrink-0">
-            <ArrowRight className="w-4 h-4 text-muted-foreground" />
-          </div>
-          <div>
-            <p className="text-sm text-foreground">
-              <span className="font-medium">{h.field}</span> changed from{' '}
-              <span className="text-muted-foreground">{h.oldValue}</span> to{' '}
-              <span className="font-medium">{h.newValue}</span>
-            </p>
-            <p className="text-xs text-muted-foreground mt-0.5">{h.user} · {formatDateTime(h.date)}</p>
-          </div>
-        </div>
-      ))}
+      <p className="text-sm text-muted-foreground">Ingen aktiviteter registrert ennå.</p>
     </div>
   );
 }

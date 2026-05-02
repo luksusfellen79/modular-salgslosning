@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { OFFER_PRODUCTS, OFFER_PACKAGES, OfferPackage } from '@/data/offerHubData';
 import { Opportunity } from '@/data/mockData';
 import { OfferPackageCard, OfferProductCard } from '@/components/offerhub/OfferProductCard';
-import { OfferSalesforcePanel } from '@/components/offerhub/OfferSalesforcePanel';
-import { Send, Copy, CheckCheck, Flag, Wifi, WifiOff } from 'lucide-react';
+import { Send, Copy, CheckCheck, Flag, ArrowLeft, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { useWarRoom } from '@/context/WarRoomContext';
@@ -28,7 +27,6 @@ const categoryLabels: Record<string, string> = {
   hardware: '📶 Utstyr',
 };
 
-// Konverterer SalesCoreOpportunity til Opportunity-shape for eksisterende komponenter
 function toOpportunity(sc: SalesCoreOpportunity): Opportunity {
   return {
     id: sc.id,
@@ -43,28 +41,23 @@ function toOpportunity(sc: SalesCoreOpportunity): Opportunity {
     owner: { name: 'Sales Core', initials: 'SC', color: '#6366f1' },
     units: sc.units,
     description: sc.notes,
-    createdDate: new Date().toISOString(),
+    createdDate: sc.createdAt,
   };
 }
 
 export default function OfferHubPage() {
   const [searchParams] = useSearchParams();
-  const preselectedId = searchParams.get('opportunityId');
+  const navigate = useNavigate();
+  const opportunityId = searchParams.get('opportunityId');
 
-  const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
-  const [isLive, setIsLive] = useState<boolean | null>(null); // null = laster
+  const [deal, setDeal] = useState<Opportunity | null>(null);
+  const [loadingDeal, setLoadingDeal] = useState(!!opportunityId);
 
-  // Aktiv offer-ID (fra Sales Core etter POST)
   const [activeOfferId, setActiveOfferId] = useState<string | null>(null);
   const [trackingUrl, setTrackingUrl] = useState<string | null>(null);
 
-  const defaultOpp =
-    (preselectedId ? opportunities.find((o) => o.id === preselectedId) : undefined) ??
-    opportunities[0];
-
   const [selectedPackage, setSelectedPackage] = useState<OfferPackage>(OFFER_PACKAGES[1]);
   const [selectedProducts, setSelectedProducts] = useState<string[]>(OFFER_PACKAGES[1].defaultProducts);
-  const [selectedOpp, setSelectedOpp] = useState<Opportunity | undefined>(defaultOpp);
   const [discount, setDiscount] = useState(10);
   const [notes, setNotes] = useState('');
   const [linkCopied, setLinkCopied] = useState(false);
@@ -74,33 +67,20 @@ export default function OfferHubPage() {
   const [isSending, setIsSending] = useState(false);
   const { submit } = useWarRoom();
 
-  // Start SSE-kobling for sanntidsvarsler
   useSalesCoreSSE();
 
-  // Hent opportunities fra Sales Core ved oppstart
+  // Hent deal fra Sales Core basert på URL-param
   useEffect(() => {
+    if (!opportunityId) return;
+    setLoadingDeal(true);
     fetchOpportunities()
       .then((data) => {
-        const mapped = data
-          .filter((o) => o.stage !== 'closed-lost')
-          .map(toOpportunity);
-        if (mapped.length > 0) {
-          setOpportunities(mapped);
-          setIsLive(true);
-        }
+        const found = data.find((o) => o.id === opportunityId);
+        setDeal(found ? toOpportunity(found) : null);
       })
-      .catch(() => {
-        setIsLive(false);
-      });
-  }, []);
-
-  // Sync selectedOpp når URL-param eller opportunities endres
-  useEffect(() => {
-    if (preselectedId) {
-      const opp = opportunities.find((o) => o.id === preselectedId);
-      if (opp) setSelectedOpp(opp);
-    }
-  }, [preselectedId, opportunities]);
+      .catch(() => setDeal(null))
+      .finally(() => setLoadingDeal(false));
+  }, [opportunityId]);
 
   const usedPoints = selectedProducts.reduce((sum, id) => {
     const p = OFFER_PRODUCTS.find((pr) => pr.id === id);
@@ -129,146 +109,152 @@ export default function OfferHubPage() {
     setTrackingUrl(null);
   };
 
-  // Opprett tilbud i Sales Core og send det
   const handleSendOffer = useCallback(async () => {
-    if (!selectedOpp || isSending) return;
-
+    if (!deal || isSending) return;
     setIsSending(true);
     try {
-      // Lag tilbud
       const offer = await createOffer({
-        opportunityId: selectedOpp.id,
-        accountName: selectedOpp.accountName,
-        contactName: selectedOpp.contactName ?? null,
-        contactEmail: selectedOpp.contactEmail ?? null,
+        opportunityId: deal.id,
+        accountName: deal.accountName,
+        contactName: deal.contactName ?? null,
+        contactEmail: deal.contactEmail ?? null,
         packageId: selectedPackage.id,
         packageName: selectedPackage.name,
         selectedProducts,
         monthlyPricePerUnit: discountedPrice,
         discountPercent: discount,
-        units: selectedOpp.units,
+        units: deal.units,
         notes: notes || undefined,
-        salesRepName: selectedOpp.owner.name,
+        salesRepName: deal.owner.name,
       });
-
-      // Send tilbudet (status → sent)
       const sentOffer = await sendOffer(offer.id);
       setActiveOfferId(sentOffer.id);
       setTrackingUrl(sentOffer.trackingUrl);
-
       setOfferSent(true);
-      toast.success(`Tilbud sendt til ${selectedOpp.accountName}`, {
-        description: sentOffer.trackingUrl,
-      });
+      setActiveTab('preview');
+      toast.success(`Tilbud sendt til ${deal.accountName}`, { description: sentOffer.trackingUrl });
       setTimeout(() => setOfferSent(false), 4000);
     } catch (err) {
       console.error('Send offer error:', err);
-      // Fallback: simuler sending lokalt
-      setOfferSent(true);
-      toast.info('Sales Core utilgjengelig – tilbud simulert lokalt');
-      setTimeout(() => setOfferSent(false), 3000);
+      toast.error('Kunne ikke sende tilbud', { description: String(err) });
     } finally {
       setIsSending(false);
     }
-  }, [selectedOpp, isSending, selectedPackage, selectedProducts, discountedPrice, discount, notes]);
+  }, [deal, isSending, selectedPackage, selectedProducts, discountedPrice, discount, notes]);
 
   const handleCopyLink = useCallback(() => {
-    const urlToCopy = trackingUrl ?? `${window.location.origin}/offer/${selectedOpp?.id ?? 'preview'}`;
+    const urlToCopy = trackingUrl ?? '';
+    if (!urlToCopy) { toast.info('Send tilbudet først for å få en sporingslenke'); return; }
     navigator.clipboard.writeText(urlToCopy).catch(() => {});
     setLinkCopied(true);
     toast.success('Lenke kopiert!', { description: urlToCopy });
     setTimeout(() => setLinkCopied(false), 2000);
-  }, [trackingUrl, selectedOpp]);
+  }, [trackingUrl]);
 
   const handleSendToWarRoom = useCallback(() => {
-    if (!selectedOpp) return;
+    if (!deal) return;
     submit({
-      dealId: selectedOpp.id,
-      dealName: selectedOpp.name,
-      accountName: selectedOpp.accountName,
-      value: discountedPrice * selectedOpp.units,
+      dealId: deal.id,
+      dealName: deal.name,
+      accountName: deal.accountName,
+      value: discountedPrice * deal.units,
       discount,
       notes,
       packageName: selectedPackage.name,
-      submittedBy: selectedOpp.owner.name,
-      units: selectedOpp.units,
+      submittedBy: deal.owner.name,
+      units: deal.units,
       pricePerUnit: discountedPrice,
     });
     setSentToWarRoom(true);
-    toast.info(`Sendt til War Room: ${selectedOpp.accountName}`);
+    toast.info(`Sendt til War Room: ${deal.accountName}`);
     setTimeout(() => setSentToWarRoom(false), 3000);
-  }, [selectedOpp, discountedPrice, discount, notes, selectedPackage, submit]);
+  }, [deal, discountedPrice, discount, notes, selectedPackage, submit]);
 
   const productsByCategory = categoryOrder.map((cat) => ({
     category: cat,
     products: OFFER_PRODUCTS.filter((p) => p.category === cat),
   }));
 
+  // ── Ingen opportunityId i URL → landing ──────────────────────────────────────
+  if (!opportunityId) {
+    return (
+      <AppLayout>
+        <div className="flex flex-col items-center justify-center h-full min-h-[60vh] text-center px-6">
+          <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
+            <Send className="w-8 h-8 text-primary" />
+          </div>
+          <h2 className="text-xl font-bold text-foreground mb-2">Åpne et tilbud fra en deal</h2>
+          <p className="text-sm text-muted-foreground max-w-sm mb-6">
+            Tilbud er knyttet til deals. Gå til Pipeline, klikk på en deal og trykk «Bygg tilbud» for å komme hit.
+          </p>
+          <button
+            onClick={() => navigate('/')}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" /> Gå til Pipeline
+          </button>
+        </div>
+      </AppLayout>
+    );
+  }
+
+  // ── Laster deal ──────────────────────────────────────────────────────────────
+  if (loadingDeal) {
+    return (
+      <AppLayout>
+        <div className="flex items-center justify-center h-64 gap-2 text-muted-foreground">
+          <Loader2 className="w-5 h-5 animate-spin" />
+          <span className="text-sm">Henter deal...</span>
+        </div>
+      </AppLayout>
+    );
+  }
+
+  // ── Deal ikke funnet ─────────────────────────────────────────────────────────
+  if (!deal) {
+    return (
+      <AppLayout>
+        <div className="flex flex-col items-center justify-center h-64 text-center gap-3">
+          <p className="text-sm font-medium text-foreground">Deal ikke funnet</p>
+          <button onClick={() => navigate('/')} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors">
+            <ArrowLeft className="w-4 h-4" /> Tilbake til Pipeline
+          </button>
+        </div>
+      </AppLayout>
+    );
+  }
+
+  // ── Offer builder ────────────────────────────────────────────────────────────
   return (
     <AppLayout>
       {/* Header */}
       <div className="border-b border-border bg-card px-6 py-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => navigate('/')}
+            className="p-1.5 rounded-lg hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </button>
           <div>
-            <h1 className="text-xl font-bold text-foreground">Offer Hub</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              Bygg og send tilbud knyttet til deals i pipeline
-            </p>
+            <p className="text-xs text-muted-foreground">{deal.accountName} · {deal.units} enheter</p>
+            <h1 className="text-lg font-bold text-foreground">{deal.name}</h1>
           </div>
-          {/* Live/offline-indikator */}
-          <div className={cn(
-            'flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full',
-            isLive === true
-              ? 'bg-success/10 text-success'
-              : isLive === false
-              ? 'bg-destructive/10 text-destructive'
-              : 'bg-muted text-muted-foreground'
-          )}>
-            {isLive === true
-              ? <><Wifi className="w-3 h-3" /> Live – Sales Core</>
-              : isLive === false
-              ? <><WifiOff className="w-3 h-3" /> Sales Core utilgjengelig</>
-              : <><span className="w-3 h-3 animate-spin inline-block border-2 border-current border-t-transparent rounded-full" /> Kobler til...</>
-            }
-          </div>
+          {deal.contactName && (
+            <div className="ml-auto text-right">
+              <p className="text-xs text-muted-foreground">Kontakt</p>
+              <p className="text-sm font-semibold text-foreground">{deal.contactName}</p>
+              <p className="text-xs text-muted-foreground">{deal.contactEmail}</p>
+            </div>
+          )}
         </div>
       </div>
 
       <div className="p-6">
         <div className="grid grid-cols-12 gap-6">
-          {/* LEFT: Pipeline opportunities */}
-          <div className="col-span-3">
-            <OfferSalesforcePanel
-              opportunities={opportunities}
-              onSelectOpportunity={setSelectedOpp}
-              selectedId={selectedOpp?.id}
-            />
-          </div>
-
           {/* CENTER: Builder */}
-          <div className="col-span-6 space-y-5">
+          <div className="col-span-8 space-y-5">
             <div className="rounded-xl border bg-card p-5">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h2 className="text-lg font-bold text-foreground">Bygg tilbud</h2>
-                  {selectedOpp && (
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium bg-primary/10 text-primary border border-primary/20">
-                        {selectedOpp.accountName}
-                      </span>
-                      <span className="text-xs text-muted-foreground">{selectedOpp.units} enheter</span>
-                    </div>
-                  )}
-                </div>
-                {selectedOpp && (
-                  <div className="text-right">
-                    <p className="text-xs text-muted-foreground">Kontaktperson</p>
-                    <p className="text-sm font-semibold text-foreground">{selectedOpp.contactName ?? '—'}</p>
-                    <p className="text-xs text-muted-foreground">{selectedOpp.contactEmail ?? '—'}</p>
-                  </div>
-                )}
-              </div>
-
               <p className="text-xs font-semibold text-foreground uppercase tracking-wide mb-3">Velg pakke</p>
               <div className="grid grid-cols-2 gap-3">
                 {OFFER_PACKAGES.map((pkg) => (
@@ -367,7 +353,7 @@ export default function OfferHubPage() {
                     </div>
                   </div>
                   <div className="flex items-baseline justify-between p-4 rounded-xl bg-primary/5 border border-primary/20">
-                    <span className="font-semibold text-foreground">Totalt per beboer/mnd</span>
+                    <span className="font-semibold text-foreground">Per beboer/mnd</span>
                     <div className="text-right">
                       {discount > 0 && (
                         <p className="text-xs line-through text-muted-foreground">
@@ -377,7 +363,6 @@ export default function OfferHubPage() {
                       <p className="text-2xl font-bold text-primary">{discountedPrice} kr</p>
                     </div>
                   </div>
-                  {/* Tracking-lenke hvis tilbud er sendt */}
                   {trackingUrl && (
                     <div className="p-3 rounded-xl bg-success/5 border border-success/20">
                       <p className="text-xs font-semibold text-success mb-1">✓ Tilbud sendt</p>
@@ -390,7 +375,7 @@ export default function OfferHubPage() {
           </div>
 
           {/* RIGHT: Offer Summary */}
-          <div className="col-span-3 space-y-5">
+          <div className="col-span-4 space-y-5">
             <div className="rounded-xl border bg-card p-5">
               <h3 className="font-bold text-foreground mb-4">Tilbudsdetaljer</h3>
 
@@ -440,22 +425,16 @@ export default function OfferHubPage() {
                     {profitPerSub} kr/mnd
                   </span>
                 </div>
-                {selectedOpp && (
-                  <>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Total fortjeneste</span>
-                      <span className={cn('font-bold', profitPerSub >= 0 ? 'text-success' : 'text-destructive')}>
-                        {(profitPerSub * selectedOpp.units).toLocaleString('nb-NO')} kr/mnd
-                      </span>
-                    </div>
-                    <p className="text-[10px] text-muted-foreground">
-                      × {selectedOpp.units} enheter ={' '}
-                      <strong>
-                        {(discountedPrice * selectedOpp.units / 1000).toFixed(0)}k kr/mnd omsetning
-                      </strong>
-                    </p>
-                  </>
-                )}
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Total fortjeneste</span>
+                  <span className={cn('font-bold', profitPerSub >= 0 ? 'text-success' : 'text-destructive')}>
+                    {(profitPerSub * deal.units).toLocaleString('nb-NO')} kr/mnd
+                  </span>
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  × {deal.units} enheter ={' '}
+                  <strong>{(discountedPrice * deal.units / 1000).toFixed(0)}k kr/mnd omsetning</strong>
+                </p>
               </div>
 
               <div className="mb-4">
@@ -474,7 +453,7 @@ export default function OfferHubPage() {
               <div className="space-y-2.5">
                 <button
                   onClick={handleSendOffer}
-                  disabled={!selectedOpp || isSending}
+                  disabled={isSending}
                   className={cn(
                     'w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl font-semibold text-sm transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed',
                     offerSent
@@ -483,7 +462,7 @@ export default function OfferHubPage() {
                   )}
                 >
                   {isSending ? (
-                    <span className="animate-spin w-4 h-4 border-2 border-current border-t-transparent rounded-full" />
+                    <Loader2 className="w-4 h-4 animate-spin" />
                   ) : offerSent ? (
                     <><CheckCheck className="w-4 h-4" /> Tilbud sendt!</>
                   ) : (
@@ -492,7 +471,7 @@ export default function OfferHubPage() {
                 </button>
                 <button
                   onClick={handleCopyLink}
-                  disabled={!selectedOpp}
+                  disabled={!trackingUrl}
                   className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl font-semibold text-sm border border-border hover:bg-muted transition-all duration-200 text-foreground disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {linkCopied ? (
@@ -503,9 +482,8 @@ export default function OfferHubPage() {
                 </button>
                 <button
                   onClick={handleSendToWarRoom}
-                  disabled={!selectedOpp}
                   className={cn(
-                    'w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl font-semibold text-sm transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed',
+                    'w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl font-semibold text-sm transition-all duration-200',
                     sentToWarRoom
                       ? 'bg-success text-success-foreground'
                       : 'bg-foreground text-background hover:opacity-90'
