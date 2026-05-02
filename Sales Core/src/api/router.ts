@@ -7,14 +7,16 @@ import {
   readOpportunities,
   readRounds,
   readSellers,
+  readUsers,
   writeEvents,
   writeOffers,
   writeOpportunities,
   writeRounds,
   writeSellers,
+  writeUsers,
 } from '../storage';
 import { eventBus } from '../events';
-import { Offer, OfferEvent, OfferStatus, Opportunity, OpportunityStage, Round, RoundStatus, RoundUnit, Seller } from '../types';
+import { Offer, OfferEvent, OfferStatus, Opportunity, OpportunityStage, Round, RoundStatus, RoundUnit, Seller, HubUser, AppPermission, UserRole } from '../types';
 import { sseManager } from '../events/sse-manager';
 
 export const router = express.Router();
@@ -597,4 +599,93 @@ router.patch('/api/sdu/rounds/:id/units/:unitId', (req: Request, res: Response) 
 
   writeRounds(rounds.map((r) => (r.id === existing.id ? updatedRound : r)));
   res.json(updatedRound);
+});
+
+// ─── Auth: Brukerregister og innlogging ───────────────────────────────────────
+
+// POST /api/auth/login — valider navn + PIN, returner bruker (minus PIN) + oppdater lastLoginAt
+router.post('/api/auth/login', (req: Request, res: Response) => {
+  const { name, pin } = req.body as { name?: string; pin?: string };
+  if (!name || !pin) {
+    return res.status(400).json({ error: 'name og pin er påkrevd' });
+  }
+
+  const users = readUsers();
+  const user = users.find(
+    (u) => u.name.toLowerCase() === name.toLowerCase() && u.pin === pin && u.isActive
+  );
+
+  if (!user) {
+    return res.status(401).json({ error: 'Feil navn eller PIN' });
+  }
+
+  const updated: HubUser = { ...user, lastLoginAt: new Date().toISOString() };
+  writeUsers(users.map((u) => (u.id === user.id ? updated : u)));
+
+  const { pin: _pin, ...safeUser } = updated;
+  res.json(safeUser);
+});
+
+// GET /api/auth/users — hent alle brukere (superadmin)
+router.get('/api/auth/users', (req: Request, res: Response) => {
+  const users = readUsers().map(({ pin: _pin, ...u }) => u);
+  res.json(users);
+});
+
+// POST /api/auth/users — opprett bruker
+router.post('/api/auth/users', (req: Request, res: Response) => {
+  const body = req.body as Partial<HubUser>;
+  if (!body.name || !body.email || !body.role || !body.pin) {
+    return res.status(400).json({ error: 'name, email, role og pin er påkrevd' });
+  }
+
+  const users = readUsers();
+  if (users.find((u) => u.email === body.email)) {
+    return res.status(409).json({ error: 'Bruker med denne e-posten finnes allerede' });
+  }
+
+  const newUser: HubUser = {
+    id: `usr-${uuid()}`,
+    name: body.name,
+    email: body.email,
+    pin: body.pin,
+    role: body.role as UserRole,
+    permissions: (body.permissions ?? []) as AppPermission[],
+    isActive: body.isActive ?? true,
+    createdAt: new Date().toISOString(),
+    createdBy: body.createdBy ?? 'superadmin',
+  };
+
+  writeUsers([...users, newUser]);
+  const { pin: _pin, ...safeUser } = newUser;
+  res.status(201).json(safeUser);
+});
+
+// PATCH /api/auth/users/:id — oppdater bruker (tilganger, rolle, PIN, aktiv)
+router.patch('/api/auth/users/:id', (req: Request, res: Response) => {
+  const users = readUsers();
+  const existing = users.find((u) => u.id === req.params.id);
+  if (!existing) {
+    return res.status(404).json({ error: 'Bruker ikke funnet' });
+  }
+
+  const body = req.body as Partial<Omit<HubUser, 'id' | 'createdAt' | 'createdBy'>>;
+  const updated: HubUser = { ...existing, ...body };
+
+  writeUsers(users.map((u) => (u.id === existing.id ? updated : u)));
+  const { pin: _pin, ...safeUser } = updated;
+  res.json(safeUser);
+});
+
+// DELETE /api/auth/users/:id — deaktiver bruker
+router.delete('/api/auth/users/:id', (req: Request, res: Response) => {
+  const users = readUsers();
+  const existing = users.find((u) => u.id === req.params.id);
+  if (!existing) {
+    return res.status(404).json({ error: 'Bruker ikke funnet' });
+  }
+
+  const deactivated: HubUser = { ...existing, isActive: false };
+  writeUsers(users.map((u) => (u.id === existing.id ? deactivated : u)));
+  res.json({ success: true });
 });

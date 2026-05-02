@@ -888,7 +888,22 @@ function AgenciesView({ agencies, setAgencies, proposals, bonusLadder, products 
 }
 
 // ─── APP ──────────────────────────────────────────────────────────────────────
+const HUB_URL = (import.meta.env.VITE_HUB_URL as string | undefined) ?? 'http://localhost:5173';
+
 export default function App() {
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('salgshub_session');
+      if (!raw) { window.location.href = HUB_URL; return; }
+      const user = JSON.parse(raw) as { permissions: string[] };
+      if (!Array.isArray(user.permissions) || !user.permissions.includes('sdu_incentives')) {
+        window.location.href = HUB_URL;
+      }
+    } catch {
+      window.location.href = HUB_URL;
+    }
+  }, []);
+
   const [page, setPage]               = useState<'incentives' | 'approvals' | 'agencies' | 'admin'>('incentives');
   const [userRole, setUserRole]       = useState<'telenor' | 'agency'>('telenor');
   const [activeAgencyId, setActiveAgencyId] = useState('ag1');

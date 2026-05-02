@@ -1,7 +1,7 @@
 // ── File-based JSON storage ──
 import fs from 'fs';
 import path from 'path';
-import { Offer, OfferEvent, Opportunity, Round, Seller } from '../types';
+import { Offer, OfferEvent, Opportunity, Round, Seller, HubUser, AppPermission } from '../types';
 
 const dataDir = process.env.DATA_DIR
   ? path.resolve(process.env.DATA_DIR)
@@ -93,4 +93,83 @@ export function readRounds(): Round[] {
 
 export function writeRounds(data: Round[]): void {
   writeJsonFile('sdu-rounds.json', data);
+}
+
+// ─── Auth: Brukerregister ─────────────────────────────────────────────────────
+
+const ALL_PERMISSIONS: AppPermission[] = ['mdu_crm', 'sdu_crm', 'sdu_planner', 'sdu_incentives'];
+
+const USER_SEED: HubUser[] = [
+  {
+    id: 'usr-1',
+    name: 'Jørn Haga',
+    email: 'jornhaga@gmail.com',
+    pin: '0000',
+    role: 'superadmin',
+    permissions: ALL_PERMISSIONS,
+    isActive: true,
+    createdAt: '2026-01-15T08:00:00Z',
+    createdBy: 'system',
+  },
+  {
+    id: 'usr-2',
+    name: 'Per Andersen',
+    email: 'per.andersen@telenor.com',
+    pin: '1234',
+    role: 'salgsleder',
+    permissions: ['sdu_planner', 'sdu_incentives', 'sdu_crm'],
+    isActive: true,
+    createdAt: '2026-01-15T08:00:00Z',
+    createdBy: 'usr-1',
+  },
+  {
+    id: 'usr-3',
+    name: 'Kari Nordmann',
+    email: 'kari.nordmann@telenor.com',
+    pin: '1234',
+    role: 'selger_sdu',
+    permissions: ['sdu_crm'],
+    isActive: true,
+    createdAt: '2026-01-15T08:00:00Z',
+    createdBy: 'usr-1',
+  },
+  {
+    id: 'usr-4',
+    name: 'Ole Hansen',
+    email: 'ole.hansen@telenor.com',
+    pin: '1234',
+    role: 'selger_sdu',
+    permissions: ['sdu_crm'],
+    isActive: true,
+    createdAt: '2026-01-15T08:00:00Z',
+    createdBy: 'usr-1',
+  },
+  {
+    id: 'usr-5',
+    name: 'Lise Berg',
+    email: 'lise.berg@telenor.com',
+    pin: '1234',
+    role: 'selger_mdu',
+    permissions: ['mdu_crm'],
+    isActive: true,
+    createdAt: '2026-01-15T08:00:00Z',
+    createdBy: 'usr-1',
+  },
+];
+
+let _usersBootstrapped = false;
+
+export function readUsers(): HubUser[] {
+  const stored = readJsonFile<HubUser[]>('auth-users.json');
+  if (!_usersBootstrapped && stored.length === 0) {
+    writeJsonFile('auth-users.json', USER_SEED);
+    _usersBootstrapped = true;
+    return USER_SEED;
+  }
+  _usersBootstrapped = true;
+  return stored;
+}
+
+export function writeUsers(data: HubUser[]): void {
+  writeJsonFile('auth-users.json', data);
 }

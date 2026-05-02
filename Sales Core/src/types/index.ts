@@ -67,6 +67,24 @@ export interface SseNotification {
   message: string;
 }
 
+// ─── Auth: Brukerregister og tilgangsstyring ──────────────────────────────────
+
+export type AppPermission = 'mdu_crm' | 'sdu_crm' | 'sdu_planner' | 'sdu_incentives';
+export type UserRole = 'superadmin' | 'salgsleder' | 'selger_sdu' | 'selger_mdu';
+
+export interface HubUser {
+  id: string;
+  name: string;
+  email: string;
+  pin: string;              // 4-sifret PIN, klartekst (pilot)
+  role: UserRole;
+  permissions: AppPermission[];
+  isActive: boolean;
+  lastLoginAt?: string;
+  createdAt: string;
+  createdBy: string;
+}
+
 // ─── SDU: Selger-registry og besøksrunder ─────────────────────────────────────
 
 export type SellerRole = 'seller' | 'manager';

@@ -664,7 +664,22 @@ function ResidentDetail({
 // ── App root ──────────────────────────────────────────────────────────────────
 type Screen = 'seller_picker' | 'round_picker' | 'unit_list' | 'detail';
 
+const HUB_URL = (import.meta.env.VITE_HUB_URL as string | undefined) ?? 'http://localhost:5173';
+
 export default function App() {
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('salgshub_session');
+      if (!raw) { window.location.href = HUB_URL; return; }
+      const user = JSON.parse(raw) as { permissions: string[] };
+      if (!Array.isArray(user.permissions) || !user.permissions.includes('sdu_crm')) {
+        window.location.href = HUB_URL;
+      }
+    } catch {
+      window.location.href = HUB_URL;
+    }
+  }, []);
+
   const [screen, setScreen] = useState<Screen>('seller_picker');
   const [seller, setSeller] = useState<Seller | null>(null);
   const [round, setRound] = useState<Round | null>(null);

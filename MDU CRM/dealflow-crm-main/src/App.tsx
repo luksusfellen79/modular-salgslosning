@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -16,7 +17,23 @@ import { WarRoomProvider } from "./context/WarRoomContext";
 
 const queryClient = new QueryClient();
 
-const App = () => (
+const HUB_URL = (import.meta.env.VITE_HUB_URL as string | undefined) ?? 'http://localhost:5173';
+
+const App = () => {
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('salgshub_session');
+      if (!raw) { window.location.href = HUB_URL; return; }
+      const user = JSON.parse(raw) as { permissions: string[] };
+      if (!Array.isArray(user.permissions) || !user.permissions.includes('mdu_crm')) {
+        window.location.href = HUB_URL;
+      }
+    } catch {
+      window.location.href = HUB_URL;
+    }
+  }, []);
+
+  return (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <Toaster />
@@ -38,6 +55,7 @@ const App = () => (
       </WarRoomProvider>
     </TooltipProvider>
   </QueryClientProvider>
-);
+  );
+};
 
 export default App;
