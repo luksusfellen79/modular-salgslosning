@@ -30,7 +30,7 @@ async function main(): Promise<void> {
   app.use(express.json());
   app.use(createRouter(engine));
 
-  const port = parseInt(process.env.WORKFLOW_PORT ?? '3002', 10);
+  const port = parseInt(process.env.PORT ?? process.env.WORKFLOW_PORT ?? '3002', 10);
   app.listen(port, () => {
     logger.info('server_started', { port, nodeEnv: process.env.NODE_ENV ?? 'development' });
   });

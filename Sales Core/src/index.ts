@@ -28,7 +28,7 @@ eventBus.subscribe('offer.event', async (payload) => {
 });
 
 export function startServer(): void {
-  const port = parseInt(process.env.SALESCORE_PORT ?? '3005', 10);
+  const port = parseInt(process.env.PORT ?? process.env.SALESCORE_PORT ?? '3005', 10);
   app.listen(port, () => {
     logger.info({ message: 'Sales Core started', port });
   });

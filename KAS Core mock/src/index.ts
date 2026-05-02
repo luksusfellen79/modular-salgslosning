@@ -16,7 +16,7 @@ export function createApp(): Express {
 }
 
 if (require.main === module) {
-  const port = Number(process.env.KASCORE_PORT ?? 3004);
+  const port = Number(process.env.PORT ?? process.env.KASCORE_PORT ?? 3004);
   const app = createApp();
 
   app.listen(port, () => {
