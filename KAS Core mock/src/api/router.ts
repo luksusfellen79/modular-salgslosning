@@ -1,5 +1,6 @@
 // ── Express API router ──
 import { Router, Request, Response } from 'express';
+import { v4 as uuidv4 } from 'uuid';
 import { logger } from '../logger';
 import {
   customers,
@@ -10,6 +11,25 @@ import {
   searchResidents,
 } from '../seed';
 import { SDU_PRODUCTS, MDU_PACKAGES, MDU_COMPONENTS } from '../data/products';
+import { Customer } from '../types';
+
+// ── In-memory SDU sale records (runtime only, resets on restart) ──
+interface SDUSaleRecord {
+  id: string;
+  unitId: string;
+  customerId: string;
+  customerName: string;
+  address: string;
+  soldProducts: string[];
+  campaignId?: string;
+  campaignName?: string;
+  salesRepName?: string;
+  notes?: string;
+  soldAt: string;
+}
+
+const runtimeCustomers: Customer[] = [];
+const sduSales: SDUSaleRecord[] = [];
 
 export const router = Router();
 
@@ -167,12 +187,117 @@ router.get('/customers/:customerId', (req: Request, res: Response) => {
 
 router.get('/customers', (req: Request, res: Response) => {
   const buildingId = req.query.buildingId?.toString();
+  const allCustomers = [...customers, ...runtimeCustomers];
 
   if (buildingId) {
-    return res.json(findCustomersByBuildingId(buildingId));
+    return res.json(allCustomers.filter((c) => c.buildingId === buildingId));
   }
 
-  res.json(customers);
+  res.json(allCustomers);
+});
+
+// ─── SDU: opprett kunde ved salg ─────────────────────────────────────────────
+
+router.post('/customers', (req: Request, res: Response) => {
+  const {
+    unitId,
+    soldProducts = [],
+    campaignId,
+    campaignName,
+    salesRepName,
+    notes,
+  } = req.body as {
+    unitId: string;
+    soldProducts?: string[];
+    campaignId?: string;
+    campaignName?: string;
+    salesRepName?: string;
+    notes?: string;
+  };
+
+  if (!unitId) {
+    return res.status(400).json({ error: 'unitId er påkrevd' });
+  }
+
+  const resident = findResidentByUnitId(unitId);
+  if (!resident) {
+    return res.status(404).json({ error: `Ingen beboer funnet for unitId: ${unitId}` });
+  }
+
+  // Sjekk om kunden allerede finnes (seed eller runtime)
+  const allCustomers = [...customers, ...runtimeCustomers];
+  const existing = allCustomers.find((c) => c.unitId === unitId);
+  if (existing) {
+    // Opprett salgsrekord men returner eksisterende kunde
+    const saleRecord: SDUSaleRecord = {
+      id: uuidv4(),
+      unitId,
+      customerId: existing.customerId,
+      customerName: existing.name,
+      address: existing.address,
+      soldProducts,
+      campaignId,
+      campaignName,
+      salesRepName,
+      notes,
+      soldAt: new Date().toISOString(),
+    };
+    sduSales.push(saleRecord);
+    logger.info('SDU sale registered (existing customer)', { customerId: existing.customerId, soldProducts });
+    return res.status(200).json({ customer: existing, sale: saleRecord, created: false });
+  }
+
+  // Opprett ny kunde fra resident-data
+  const customerId = `sdu-${uuidv4()}`;
+  const newCustomer: Customer = {
+    customerId,
+    name: resident.name,
+    phone: resident.phone ?? '',
+    email: `${resident.name.toLowerCase().replace(/\s+/g, '.')}@example.com`,
+    address: `${unitId}`,   // adresse hentes fra buildingId-metadata i seed
+    postalCode: '',
+    city: '',
+    unitId: resident.unitId,
+    buildingId: resident.buildingId,
+    existingProducts: soldProducts.map((name, i) => ({
+      productId: `${name}-${customerId}-${i}`,
+      name,
+      monthlyCost: 0,
+      activeSince: new Date().toISOString(),
+    })),
+    previousProducts: [],
+    customerSince: new Date().toISOString(),
+    accountValue: 0,
+    interestScores: resident.interestScores,
+    campaigns: resident.campaigns,
+    upsellProducts: resident.upsellProducts,
+  };
+
+  runtimeCustomers.push(newCustomer);
+
+  const saleRecord: SDUSaleRecord = {
+    id: uuidv4(),
+    unitId,
+    customerId,
+    customerName: resident.name,
+    address: unitId,
+    soldProducts,
+    campaignId,
+    campaignName,
+    salesRepName,
+    notes,
+    soldAt: new Date().toISOString(),
+  };
+  sduSales.push(saleRecord);
+
+  logger.info('SDU new customer created', { customerId, unitId, soldProducts });
+  res.status(201).json({ customer: newCustomer, sale: saleRecord, created: true });
+});
+
+// ─── SDU: hent salgslogg ──────────────────────────────────────────────────────
+
+router.get('/sales/sdu', (_req: Request, res: Response) => {
+  res.json(sduSales);
 });
 
 router.get('/search', (req: Request, res: Response) => {

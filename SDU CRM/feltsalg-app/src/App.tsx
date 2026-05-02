@@ -1,7 +1,6 @@
 import { useState, useCallback } from 'react';
 import { BUILDINGS, Building, Resident, Campaign, VisitStatus, VisitOutcome } from './lib/types';
-import { fetchResidents } from './lib/kasCore';
-import { logVisitOutcome } from './lib/salesCore';
+import { fetchResidents, logSDUOutcome } from './lib/kasCore';
 
 // ── Telenor logo ──────────────────────────────────────────────────────────────
 function TelenorLogo({ size = 24, white = false }: { size?: number; white?: boolean }) {
@@ -389,13 +388,14 @@ function ResidentDetail({
           ? [campaign.product, ...extraProducts]
           : [];
 
-        await logVisitOutcome({
+        await logSDUOutcome({
           outcome,
-          residentName: resident.name,
-          address: `${building.address}, ${resident.unitNumber}`,
-          buildingAddress: building.address,
-          campaignName: campaign.name,
+          unitId: resident.unitId,
           soldProducts,
+          campaignId: campaign.id,
+          campaignName: campaign.name,
+          salesRepName: 'Feltsalg',
+          notes: `Besøk: ${building.address}, ${resident.unitNumber}`,
         });
 
         const status: VisitStatus = {
@@ -407,7 +407,7 @@ function ResidentDetail({
         onVisitLogged(resident.unitId, status);
 
         const labels: Record<VisitOutcome, string> = {
-          sold: '✓ Salg registrert!',
+          sold: '✓ Kunde opprettet i KAS Core!',
           no_answer: 'Registrert: Ikke hjemme',
           rejected: 'Registrert: Ikke interessert',
           followup: 'Oppfølging registrert',
@@ -415,7 +415,7 @@ function ResidentDetail({
         };
         showToast(labels[outcome]);
       } catch {
-        showToast('❌ Kunne ikke logge til Sales Core');
+        showToast('❌ Kunne ikke logge til KAS Core');
       } finally {
         setLogging(false);
       }
