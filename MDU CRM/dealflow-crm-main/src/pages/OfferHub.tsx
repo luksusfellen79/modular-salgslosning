@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { OFFER_PRODUCTS, OFFER_PACKAGES, OfferPackage } from '@/data/offerHubData';
+import { OfferPackage, OfferProduct } from '@/data/offerHubData';
 import { Opportunity } from '@/data/mockData';
 import { OfferPackageCard, OfferProductCard } from '@/components/offerhub/OfferProductCard';
 import { Send, Copy, CheckCheck, Flag, ArrowLeft, Loader2 } from 'lucide-react';
@@ -13,6 +13,13 @@ import {
   createOffer,
   sendOffer,
 } from '@/lib/salesCore';
+import {
+  fetchMDUPackages,
+  fetchMDUComponents,
+  KASMDUPackage,
+  KASMDUComponent,
+  categoryMap,
+} from '@/lib/kasCore';
 import { useSalesCoreSSE } from '@/hooks/useSalesCoreSSE';
 import { toast } from '@/components/ui/sonner';
 
@@ -26,6 +33,37 @@ const categoryLabels: Record<string, string> = {
   security: '🛡️ Sikkerhet',
   hardware: '📶 Utstyr',
 };
+
+// ── Map KAS Core types to OfferHub types ─────────────────────────────────────
+
+function mapComponent(c: KASMDUComponent): OfferProduct {
+  return {
+    id: c.componentId,
+    name: c.name,
+    category: (categoryMap[c.category] ?? c.category) as OfferProduct['category'],
+    points: c.points,
+    monthlyPrice: 0,
+    costPrice: c.costPerUnit,
+    description: c.description,
+    isDefault: c.isDefault,
+    speed: c.specs?.speed,
+    icon: undefined,
+  };
+}
+
+function mapPackage(p: KASMDUPackage): OfferPackage {
+  return {
+    id: p.packageId,
+    name: p.name,
+    tier: p.tier,
+    totalPoints: p.totalPoints,
+    monthlyPrice: p.monthlyPricePerUnit,
+    defaultProducts: p.defaultComponents,
+    description: p.description,
+    color: p.color,
+    featured: p.featured,
+  };
+}
 
 function toOpportunity(sc: SalesCoreOpportunity): Opportunity {
   return {
@@ -53,11 +91,16 @@ export default function OfferHubPage() {
   const [deal, setDeal] = useState<Opportunity | null>(null);
   const [loadingDeal, setLoadingDeal] = useState(!!opportunityId);
 
+  // KAS Core catalog
+  const [offerPackages, setOfferPackages] = useState<OfferPackage[]>([]);
+  const [offerProducts, setOfferProducts] = useState<OfferProduct[]>([]);
+  const [loadingCatalog, setLoadingCatalog] = useState(true);
+
   const [activeOfferId, setActiveOfferId] = useState<string | null>(null);
   const [trackingUrl, setTrackingUrl] = useState<string | null>(null);
 
-  const [selectedPackage, setSelectedPackage] = useState<OfferPackage>(OFFER_PACKAGES[1]);
-  const [selectedProducts, setSelectedProducts] = useState<string[]>(OFFER_PACKAGES[1].defaultProducts);
+  const [selectedPackage, setSelectedPackage] = useState<OfferPackage | null>(null);
+  const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
   const [discount, setDiscount] = useState(10);
   const [notes, setNotes] = useState('');
   const [linkCopied, setLinkCopied] = useState(false);
@@ -68,6 +111,28 @@ export default function OfferHubPage() {
   const { submit } = useWarRoom();
 
   useSalesCoreSSE();
+
+  // Hent MDU-produktkatalog fra KAS Core
+  useEffect(() => {
+    Promise.all([fetchMDUPackages(), fetchMDUComponents()])
+      .then(([pkgs, comps]) => {
+        const mappedPackages = pkgs.map(mapPackage);
+        const mappedProducts = comps.map(mapComponent);
+        setOfferPackages(mappedPackages);
+        setOfferProducts(mappedProducts);
+        // Velg Frihet M (index 1) som standard, ellers første pakke
+        const defaultPkg = mappedPackages.find((p) => p.tier === 'M') ?? mappedPackages[0];
+        if (defaultPkg) {
+          setSelectedPackage(defaultPkg);
+          setSelectedProducts(defaultPkg.defaultProducts);
+        }
+      })
+      .catch((err) => {
+        console.error('KAS Core catalog error:', err);
+        toast.error('Kunne ikke hente produktkatalog fra KAS Core');
+      })
+      .finally(() => setLoadingCatalog(false));
+  }, []);
 
   // Hent deal fra Sales Core basert på URL-param
   useEffect(() => {
@@ -83,13 +148,13 @@ export default function OfferHubPage() {
   }, [opportunityId]);
 
   const usedPoints = selectedProducts.reduce((sum, id) => {
-    const p = OFFER_PRODUCTS.find((pr) => pr.id === id);
+    const p = offerProducts.find((pr) => pr.id === id);
     return sum + (p?.points || 0);
   }, 0);
-  const remainingPoints = selectedPackage.totalPoints - usedPoints;
-  const discountedPrice = Math.round(selectedPackage.monthlyPrice * (1 - discount / 100));
+  const remainingPoints = (selectedPackage?.totalPoints ?? 0) - usedPoints;
+  const discountedPrice = Math.round((selectedPackage?.monthlyPrice ?? 0) * (1 - discount / 100));
   const totalCost = selectedProducts.reduce((sum, id) => {
-    const p = OFFER_PRODUCTS.find((pr) => pr.id === id);
+    const p = offerProducts.find((pr) => pr.id === id);
     return sum + (p?.costPrice || 0);
   }, 0);
   const profitPerSub = discountedPrice - totalCost;
@@ -110,7 +175,7 @@ export default function OfferHubPage() {
   };
 
   const handleSendOffer = useCallback(async () => {
-    if (!deal || isSending) return;
+    if (!deal || isSending || !selectedPackage) return;
     setIsSending(true);
     try {
       const offer = await createOffer({
@@ -152,7 +217,7 @@ export default function OfferHubPage() {
   }, [trackingUrl]);
 
   const handleSendToWarRoom = useCallback(() => {
-    if (!deal) return;
+    if (!deal || !selectedPackage) return;
     submit({
       dealId: deal.id,
       dealName: deal.name,
@@ -172,7 +237,7 @@ export default function OfferHubPage() {
 
   const productsByCategory = categoryOrder.map((cat) => ({
     category: cat,
-    products: OFFER_PRODUCTS.filter((p) => p.category === cat),
+    products: offerProducts.filter((p) => p.category === cat),
   }));
 
   // ── Ingen opportunityId i URL → landing ──────────────────────────────────────
@@ -198,13 +263,25 @@ export default function OfferHubPage() {
     );
   }
 
-  // ── Laster deal ──────────────────────────────────────────────────────────────
-  if (loadingDeal) {
+  // ── Laster katalog eller deal ─────────────────────────────────────────────────
+  if (loadingCatalog || loadingDeal) {
     return (
       <AppLayout>
         <div className="flex items-center justify-center h-64 gap-2 text-muted-foreground">
           <Loader2 className="w-5 h-5 animate-spin" />
-          <span className="text-sm">Henter deal...</span>
+          <span className="text-sm">{loadingCatalog ? 'Henter produktkatalog...' : 'Henter deal...'}</span>
+        </div>
+      </AppLayout>
+    );
+  }
+
+  // ── Ingen pakker lastet (KAS Core nede?) ──────────────────────────────────────
+  if (offerPackages.length === 0) {
+    return (
+      <AppLayout>
+        <div className="flex flex-col items-center justify-center h-64 text-center gap-3">
+          <p className="text-sm font-medium text-foreground">Ingen pakker tilgjengelig</p>
+          <p className="text-xs text-muted-foreground">Klarte ikke hente produktkatalog fra KAS Core.</p>
         </div>
       </AppLayout>
     );
@@ -257,11 +334,11 @@ export default function OfferHubPage() {
             <div className="rounded-xl border bg-card p-5">
               <p className="text-xs font-semibold text-foreground uppercase tracking-wide mb-3">Velg pakke</p>
               <div className="grid grid-cols-2 gap-3">
-                {OFFER_PACKAGES.map((pkg) => (
+                {offerPackages.map((pkg) => (
                   <OfferPackageCard
                     key={pkg.id}
                     pkg={pkg}
-                    isSelected={selectedPackage.id === pkg.id}
+                    isSelected={selectedPackage?.id === pkg.id}
                     onSelect={() => handleSelectPackage(pkg)}
                   />
                 ))}
@@ -334,10 +411,10 @@ export default function OfferHubPage() {
               ) : (
                 <div className="space-y-3">
                   <div className="p-4 rounded-xl bg-muted/50">
-                    <p className="text-sm font-semibold text-foreground mb-2">Pakke: {selectedPackage.name}</p>
+                    <p className="text-sm font-semibold text-foreground mb-2">Pakke: {selectedPackage?.name}</p>
                     <div className="space-y-1.5">
                       {selectedProducts.map((id) => {
-                        const p = OFFER_PRODUCTS.find((pr) => pr.id === id);
+                        const p = offerProducts.find((pr) => pr.id === id);
                         if (!p) return null;
                         return (
                           <div key={id} className="flex items-center justify-between text-sm">
@@ -403,7 +480,7 @@ export default function OfferHubPage() {
               <div className="p-4 rounded-xl bg-muted/50 mb-4 space-y-2">
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Listepris</span>
-                  <span className="font-medium text-foreground">{selectedPackage.monthlyPrice} kr/mnd</span>
+                  <span className="font-medium text-foreground">{selectedPackage?.monthlyPrice ?? 0} kr/mnd</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Rabatt</span>
