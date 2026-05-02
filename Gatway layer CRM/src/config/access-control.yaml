@@ -1,0 +1,48 @@
+# Tilgangskontroll-matrise
+# Definer hvilke tjenester som har tilgang til hvilke connectors og operasjoner.
+# Legg til ny tjeneste her — ingen kodeendringer nødvendig.
+#
+# Gyldige operasjoner:
+#   salesforce: read | write
+#   kafka:      consume | produce
+
+services:
+  crm-ui-bff:
+    description: Backend for Frontend for CRM UI
+    connectors:
+      salesforce:
+        operations: [read, write]
+      kafka:
+        operations: [consume]
+        topics: [customer-events, order-events]
+
+  service-a:
+    description: CRM-integrasjonstjeneste A
+    connectors:
+      salesforce:
+        operations: [read, write]
+      kafka:
+        operations: [consume]
+        topics: [customer-events]
+
+  service-b:
+    description: Kundedata-tjeneste B
+    connectors:
+      salesforce:
+        operations: [read]
+      kafka:
+        operations: [consume, produce]
+        topics: [customer-events, customer-updates]
+
+  service-c:
+    description: Ordrebehandlings-tjeneste C
+    connectors:
+      salesforce:
+        operations: [read, write]
+
+  service-d:
+    description: Analyse-tjeneste D
+    connectors:
+      kafka:
+        operations: [consume]
+        topics: [customer-events, order-events, customer-updates]

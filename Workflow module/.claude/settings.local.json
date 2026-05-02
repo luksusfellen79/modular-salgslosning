@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(list\\(d.get\\('packages',{}\\).keys\\(\\)\\)[:30]\\)\")",
+      "Bash(npm run *)",
+      "Bash(npm test *)"
+    ]
+  }
+}

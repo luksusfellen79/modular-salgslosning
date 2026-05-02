@@ -1,0 +1,22 @@
+# Node
+node_modules/
+dist/
+.env
+.env.local
+
+# Data-filer (ephemeral på Railway, nullstilles ved redeploy)
+*/data/*.json
+!*/data/.gitkeep
+
+# Vite
+*.local
+.vite/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+*.dmg

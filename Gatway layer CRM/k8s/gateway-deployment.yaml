@@ -1,0 +1,94 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: crm-gateway
+  namespace: crm
+  labels:
+    app: crm-gateway
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: crm-gateway
+  template:
+    metadata:
+      labels:
+        app: crm-gateway
+    spec:
+      containers:
+        - name: crm-gateway
+          image: telenor-registry/crm-gateway:latest  # oppdater med faktisk registry
+          ports:
+            - containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: crm-gateway-config
+          env:
+            - name: GATEWAY_API_KEYS
+              valueFrom:
+                secretKeyRef:
+                  name: crm-gateway-secrets
+                  key: api-keys
+            - name: SF_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: sf-credentials
+                  key: client-id
+            - name: KAFKA_SASL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: kafka-credentials
+                  key: password
+          volumeMounts:
+            - name: sf-private-key
+              mountPath: /run/secrets
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+      volumes:
+        - name: sf-private-key
+          secret:
+            secretName: sf-private-key
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: crm-gateway
+  namespace: crm
+spec:
+  selector:
+    app: crm-gateway
+  ports:
+    - port: 3000
+      targetPort: 3000
+  type: ClusterIP
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: crm-gateway-config
+  namespace: crm
+data:
+  GATEWAY_PORT: "3000"
+  GATEWAY_ENV: "production"
+  SF_API_VERSION: "v62.0"
+  KAFKA_SSL: "true"
+  LOG_LEVEL: "info"
+  ACCESS_CONTROL_PATH: "./src/config/access-control.yaml"
