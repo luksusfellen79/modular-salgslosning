@@ -142,6 +142,16 @@ export async function sendOffer(offerId: string): Promise<SalesCoreOffer> {
   });
 }
 
+export async function updateOpportunityStage(
+  id: string,
+  stage: string
+): Promise<SalesCoreOpportunity> {
+  return apiFetch<SalesCoreOpportunity>(`/api/opportunities/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ stage }),
+  });
+}
+
 export async function updateOpportunityWarRoom(
   id: string,
   status: WarRoomStatus,

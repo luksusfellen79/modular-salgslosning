@@ -4,7 +4,7 @@ import { KanbanBoard } from '@/components/pipeline/KanbanBoard';
 import { SidePanel } from '@/components/pipeline/SidePanel';
 import { AddDealModal } from '@/components/pipeline/AddDealModal';
 import { Opportunity, formatCurrency } from '@/data/mockData';
-import { fetchOpportunities, fetchOffers, SalesCoreOpportunity, SalesCoreOffer } from '@/lib/salesCore';
+import { fetchOpportunities, fetchOffers, updateOpportunityStage, SalesCoreOpportunity, SalesCoreOffer } from '@/lib/salesCore';
 import { Plus, Filter, SlidersHorizontal, Loader2 } from 'lucide-react';
 
 const STAGE_PROBABILITY: Record<string, number> = {
@@ -70,10 +70,16 @@ export default function Index() {
   useEffect(() => { loadDeals(); }, [loadDeals]);
 
   const handleMoveDeal = useCallback((dealId: string, newStage: string) => {
+    // Optimistic update
     setDeals((prev) =>
       prev.map((d) => (d.id === dealId ? { ...d, stage: newStage } : d))
     );
-  }, []);
+    // Persist to Sales Core
+    updateOpportunityStage(dealId, newStage).catch(() => {
+      // Revert on failure
+      loadDeals();
+    });
+  }, [loadDeals]);
 
   const totalValue = deals.reduce((s, d) => s + d.value, 0);
 
