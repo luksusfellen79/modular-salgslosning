@@ -711,8 +711,15 @@ export default function App() {
   const [selectedRound, setSelectedRound] = useState<Round | null>(null);
   const [error, setError] = useState('');
 
-  // For now use first manager name as createdBy label
-  const managerName = sellers.find(s => s.role === 'manager')?.name ?? 'Salgsleder';
+  // Use logged-in Hub user as manager name
+  const managerName = (() => {
+    try {
+      const raw = localStorage.getItem('salgshub_session');
+      if (!raw) return sellers.find(s => s.role === 'manager')?.name ?? 'Salgsleder';
+      const u = JSON.parse(raw) as { name: string };
+      return u.name ?? 'Salgsleder';
+    } catch { return 'Salgsleder'; }
+  })();
 
   const load = useCallback(async () => {
     setLoading(true);
