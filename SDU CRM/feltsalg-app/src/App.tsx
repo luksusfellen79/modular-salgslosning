@@ -662,7 +662,7 @@ function ResidentDetail({
 }
 
 // ── App root ──────────────────────────────────────────────────────────────────
-type Screen = 'seller_picker' | 'round_picker' | 'unit_list' | 'detail';
+type Screen = 'loading' | 'seller_picker' | 'round_picker' | 'unit_list' | 'detail';
 
 // Bootstrap session from Hub link token
 try {
@@ -683,26 +683,47 @@ function getSessionName(): string | null {
 }
 
 export default function App() {
+  const sessionName = getSessionName();
 
-  const [screen, setScreen] = useState<Screen>('seller_picker');
+  const [screen, setScreen] = useState<Screen>(sessionName ? 'loading' : 'seller_picker');
   const [seller, setSeller] = useState<Seller | null>(null);
   const [round, setRound] = useState<Round | null>(null);
   const [selectedUnit, setSelectedUnit] = useState<RoundUnit | null>(null);
   const [visitMap, setVisitMap] = useState<Map<string, VisitStatus>>(new Map());
 
-  // Auto-match Hub session user to a seller on startup
+  // Auto-login fra Hub session: match mot selgerliste, eller bruk syntetisk selger
   useEffect(() => {
-    const sessionName = getSessionName();
     if (!sessionName) return;
     fetchSellers().then((sellers) => {
       const match = sellers.find(
         (s) => s.name.toLowerCase() === sessionName.toLowerCase()
       );
-      if (match) {
-        setSeller(match);
-        setScreen('round_picker');
-      }
-    }).catch(() => { /* fall back to seller_picker */ });
+      const resolvedSeller: Seller = match ?? {
+        id: 'hub-session-user',
+        name: sessionName,
+        email: '',
+        phone: '',
+        role: 'seller',
+        sfId: '',
+        isActive: true,
+        createdAt: new Date().toISOString(),
+      };
+      setSeller(resolvedSeller);
+      setScreen('round_picker');
+    }).catch(() => {
+      // Fallback: syntetisk selger uten selgerliste
+      setSeller({
+        id: 'hub-session-user',
+        name: sessionName,
+        email: '',
+        phone: '',
+        role: 'seller',
+        sfId: '',
+        isActive: true,
+        createdAt: new Date().toISOString(),
+      });
+      setScreen('round_picker');
+    });
   }, []);
 
   const handleSelectSeller = (s: Seller) => {
@@ -726,6 +747,17 @@ export default function App() {
   const handleVisitLogged = useCallback((unitId: string, status: VisitStatus) => {
     setVisitMap((prev) => new Map(prev).set(unitId, status));
   }, []);
+
+  if (screen === 'loading') {
+    return (
+      <div className="min-h-screen bg-[#005A8E] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <TelenorLogo size={40} white />
+          <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+        </div>
+      </div>
+    );
+  }
 
   if (screen === 'seller_picker') {
     return <SellerPicker onSelect={handleSelectSeller} />;
