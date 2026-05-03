@@ -4,7 +4,7 @@ import { KanbanBoard } from '@/components/pipeline/KanbanBoard';
 import { SidePanel } from '@/components/pipeline/SidePanel';
 import { AddDealModal } from '@/components/pipeline/AddDealModal';
 import { Opportunity, formatCurrency } from '@/data/mockData';
-import { fetchOpportunities, SalesCoreOpportunity } from '@/lib/salesCore';
+import { fetchOpportunities, fetchOffers, SalesCoreOpportunity, SalesCoreOffer } from '@/lib/salesCore';
 import { Plus, Filter, SlidersHorizontal, Loader2 } from 'lucide-react';
 
 const STAGE_PROBABILITY: Record<string, number> = {
@@ -16,7 +16,10 @@ const STAGE_PROBABILITY: Record<string, number> = {
   'closed-lost': 0,
 };
 
-function toKanbanOpp(sc: SalesCoreOpportunity): Opportunity {
+function toKanbanOpp(sc: SalesCoreOpportunity, offersMap: Map<string, SalesCoreOffer[]>): Opportunity {
+  const oppOffers = offersMap.get(sc.id) ?? [];
+  const hasViewedOffer = oppOffers.some(o => o.viewCount > 0);
+  const maxViews = oppOffers.reduce((max, o) => Math.max(max, o.viewCount ?? 0), 0);
   return {
     id: sc.id,
     name: sc.name,
@@ -37,6 +40,8 @@ function toKanbanOpp(sc: SalesCoreOpportunity): Opportunity {
     createdDate: sc.createdAt,
     warRoomStatus: sc.warRoomStatus,
     warRoomNote: sc.warRoomNote,
+    hasViewedOffer,
+    viewedOfferCount: maxViews,
   };
 }
 
@@ -48,8 +53,16 @@ export default function Index() {
 
   const loadDeals = useCallback(() => {
     setLoading(true);
-    fetchOpportunities()
-      .then((data) => setDeals(data.map(toKanbanOpp)))
+    Promise.all([fetchOpportunities(), fetchOffers().catch(() => [] as SalesCoreOffer[])])
+      .then(([opps, offers]) => {
+        const offersMap = new Map<string, SalesCoreOffer[]>();
+        offers.forEach(o => {
+          const arr = offersMap.get(o.opportunityId) ?? [];
+          arr.push(o);
+          offersMap.set(o.opportunityId, arr);
+        });
+        setDeals(opps.map(sc => toKanbanOpp(sc, offersMap)));
+      })
       .catch(() => setDeals([]))
       .finally(() => setLoading(false));
   }, []);

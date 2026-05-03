@@ -2,11 +2,13 @@ import { useState, useEffect, useCallback } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import {
   fetchOpportunities,
+  fetchOffers,
   updateOpportunityWarRoom,
   SalesCoreOpportunity,
+  SalesCoreOffer,
   WarRoomStatus,
 } from '@/lib/salesCore';
-import { Shield, ShieldCheck, ShieldX, Loader2, CheckCircle2, XCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { Shield, ShieldCheck, ShieldX, Loader2, CheckCircle2, XCircle, ChevronDown, ChevronUp, Eye } from 'lucide-react';
 
 const formatCurrency = (v: number) =>
   new Intl.NumberFormat('nb-NO', { style: 'currency', currency: 'NOK', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(v);
@@ -24,8 +26,12 @@ const STAGE_LABELS: Record<string, string> = {
 
 type ActionState = { loading: boolean; error?: string };
 
+const formatViewedAt = (ts: string) =>
+  new Date(ts).toLocaleString('nb-NO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+
 export default function WarRoom() {
   const [deals, setDeals] = useState<SalesCoreOpportunity[]>([]);
+  const [offersMap, setOffersMap] = useState<Map<string, SalesCoreOffer[]>>(new Map());
   const [loading, setLoading] = useState(true);
   const [actions, setActions] = useState<Record<string, ActionState>>({});
   const [notes, setNotes] = useState<Record<string, string>>({});
@@ -33,8 +39,20 @@ export default function WarRoom() {
 
   const load = useCallback(() => {
     setLoading(true);
-    fetchOpportunities()
-      .then((data) => setDeals(data))
+    Promise.all([
+      fetchOpportunities(),
+      fetchOffers().catch(() => [] as SalesCoreOffer[]),
+    ])
+      .then(([opps, offers]) => {
+        setDeals(opps);
+        const map = new Map<string, SalesCoreOffer[]>();
+        offers.forEach(o => {
+          const arr = map.get(o.opportunityId) ?? [];
+          arr.push(o);
+          map.set(o.opportunityId, arr);
+        });
+        setOffersMap(map);
+      })
       .catch(() => setDeals([]))
       .finally(() => setLoading(false));
   }, []);
@@ -95,6 +113,9 @@ export default function WarRoom() {
             {pending.map((deal) => {
               const act = actions[deal.id];
               const isExpanded = expanded[deal.id];
+              const dealOffers = offersMap.get(deal.id) ?? [];
+              const viewedOffer = dealOffers.find(o => (o.viewCount ?? 0) > 0);
+              const totalViews = dealOffers.reduce((s, o) => s + (o.viewCount ?? 0), 0);
               return (
                 <div key={deal.id} className="bg-card border border-amber-400/40 rounded-xl shadow-sm overflow-hidden">
                   <div className="p-5">
@@ -108,12 +129,32 @@ export default function WarRoom() {
                         </div>
                         <p className="text-xs font-medium text-muted-foreground">{deal.accountName}</p>
                         <h3 className="text-base font-bold text-foreground leading-tight">{deal.name}</h3>
-                        <div className="flex items-center gap-4 mt-2 text-sm">
+                        <div className="flex items-center gap-4 mt-2 text-sm flex-wrap">
                           <span className="font-semibold text-foreground">{formatCurrency(deal.estimatedAnnualValue)}</span>
                           <span className="text-muted-foreground">{deal.units} enheter</span>
                           <span className="text-muted-foreground">{formatDate(deal.closeDate)}</span>
                           <span className="text-muted-foreground">Selger: {deal.salesRepName ?? 'Ukjent'}</span>
                         </div>
+                        {/* Offer tracking signal */}
+                        {viewedOffer ? (
+                          <div className="flex items-center gap-1.5 mt-2 py-1.5 px-2.5 rounded-lg bg-emerald-500/10 border border-emerald-400/30 w-fit">
+                            <Eye className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                            <span className="text-xs font-semibold text-emerald-700">
+                              Tilbud åpnet av kunde
+                              {totalViews > 1 && ` · ${totalViews} ganger`}
+                            </span>
+                            {viewedOffer.firstViewedAt && (
+                              <span className="text-xs text-emerald-600">
+                                · {formatViewedAt(viewedOffer.firstViewedAt)}
+                              </span>
+                            )}
+                          </div>
+                        ) : dealOffers.length > 0 ? (
+                          <div className="flex items-center gap-1.5 mt-2 py-1 px-2 rounded-lg bg-muted/60 w-fit">
+                            <Eye className="w-3 h-3 text-muted-foreground" />
+                            <span className="text-xs text-muted-foreground">Tilbud sendt — ikke åpnet ennå</span>
+                          </div>
+                        ) : null}
                       </div>
                     </div>
 

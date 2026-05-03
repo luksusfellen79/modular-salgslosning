@@ -298,27 +298,35 @@ router.get('/track/:trackingToken', (req: Request, res: Response) => {
     return res.status(404).json({ error: 'Offer not found' });
   }
 
-  if (offer.status === 'sent') {
-    const updatedOffer: Offer = {
-      ...offer,
-      status: 'viewed',
-      updatedAt: new Date().toISOString(),
-    };
-    writeOffers(offers.map((item) => (item.id === offer.id ? updatedOffer : item)));
+  const now = new Date().toISOString();
+  const isFirstView = !offer.firstViewedAt;
 
-    const event: OfferEvent = {
-      id: uuid(),
-      offerId: updatedOffer.id,
-      opportunityId: updatedOffer.opportunityId,
-      accountName: updatedOffer.accountName,
-      contactName: updatedOffer.contactName,
-      type: 'viewed',
-      timestamp: new Date().toISOString(),
-      ipAddress: req.ip,
-    };
+  const updatedOffer: Offer = {
+    ...offer,
+    // Advance status from 'sent' → 'viewed', keep 'viewed'/'accepted'/'declined' as-is
+    status: offer.status === 'sent' ? 'viewed' : offer.status,
+    firstViewedAt: offer.firstViewedAt ?? now,
+    viewCount: (offer.viewCount ?? 0) + 1,
+    updatedAt: now,
+  };
+  writeOffers(offers.map((item) => (item.id === offer.id ? updatedOffer : item)));
 
-    const events = readEvents();
-    writeEvents([...events, event]);
+  const event: OfferEvent = {
+    id: uuid(),
+    offerId: updatedOffer.id,
+    opportunityId: updatedOffer.opportunityId,
+    accountName: updatedOffer.accountName,
+    contactName: updatedOffer.contactName,
+    type: 'viewed',
+    timestamp: now,
+    ipAddress: req.ip,
+  };
+
+  const events = readEvents();
+  writeEvents([...events, event]);
+
+  // Fire SSE notification only on first view so leder gets a real-time ping
+  if (isFirstView) {
     eventBus.publish('offer.event', event);
   }
 

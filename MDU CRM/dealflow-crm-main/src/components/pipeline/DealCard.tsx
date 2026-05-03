@@ -1,5 +1,5 @@
 import { Opportunity, formatCurrency, formatDate } from '@/data/mockData';
-import { Calendar, DollarSign, Lock, ShieldCheck, ShieldX } from 'lucide-react';
+import { Calendar, DollarSign, Lock, ShieldCheck, ShieldX, Eye } from 'lucide-react';
 
 interface DealCardProps {
   deal: Opportunity;
@@ -47,6 +47,15 @@ export function DealCard({ deal, onClick }: DealCardProps) {
             >
               <ShieldX className="w-2.5 h-2.5" />
               WR
+            </span>
+          )}
+          {deal.hasViewedOffer && (
+            <span
+              title={`Tilbud åpnet av kunde${deal.viewedOfferCount && deal.viewedOfferCount > 1 ? ` · ${deal.viewedOfferCount} ganger` : ''}`}
+              className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0 bg-emerald-500/15 text-emerald-600"
+            >
+              <Eye className="w-2.5 h-2.5" />
+              {deal.viewedOfferCount && deal.viewedOfferCount > 1 ? deal.viewedOfferCount : ''}
             </span>
           )}
         </div>

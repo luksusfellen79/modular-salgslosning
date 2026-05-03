@@ -52,7 +52,15 @@ export function writeOpportunities(data: Opportunity[]): void {
 }
 
 export function readOffers(): Offer[] {
-  return readJsonFile<Offer[]>('offers.json');
+  const offers = readJsonFile<Offer[]>('offers.json');
+  // Backfill: ensure viewCount exists on all offers
+  const needsWrite = offers.some(o => typeof o.viewCount !== 'number');
+  if (needsWrite) {
+    const patched = offers.map(o => typeof o.viewCount === 'number' ? o : { ...o, viewCount: 0 });
+    writeJsonFile('offers.json', patched);
+    return patched;
+  }
+  return offers;
 }
 
 export function writeOffers(data: Offer[]): void {

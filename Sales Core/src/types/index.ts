@@ -45,6 +45,8 @@ export interface Offer {
   notes?: string;
   salesRepName: string;
   trackingToken: string;
+  firstViewedAt?: string;
+  viewCount: number;
   status: OfferStatus;
   validUntil: string;
   createdAt: string;

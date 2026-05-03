@@ -21,6 +21,8 @@ export interface Opportunity {
   createdDate: string;
   warRoomStatus?: WarRoomStatus;
   warRoomNote?: string;
+  hasViewedOffer?: boolean;    // true dersom minst ett tilbud har blitt åpnet av kunde
+  viewedOfferCount?: number;   // antall åpninger på siste/beste tilbud
 }
 
 export interface Activity {

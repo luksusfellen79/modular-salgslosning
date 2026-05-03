@@ -26,6 +26,17 @@ export interface SalesCoreOpportunity {
   updatedAt: string;
 }
 
+export interface SalesCoreOffer {
+  id: string;
+  opportunityId: string;
+  packageName: string;
+  status: string;
+  firstViewedAt?: string;
+  viewCount: number;
+  trackingUrl: string;
+  createdAt: string;
+}
+
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     headers: { 'Content-Type': 'application/json' },
@@ -40,6 +51,10 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
 
 export async function fetchOpportunities(): Promise<SalesCoreOpportunity[]> {
   return apiFetch<SalesCoreOpportunity[]>('/api/opportunities');
+}
+
+export async function fetchOffers(): Promise<SalesCoreOffer[]> {
+  return apiFetch<SalesCoreOffer[]>('/api/offers');
 }
 
 export async function updateOpportunityWarRoom(

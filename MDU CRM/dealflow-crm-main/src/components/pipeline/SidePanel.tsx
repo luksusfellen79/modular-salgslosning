@@ -1,4 +1,4 @@
-import { X, Phone, Mail, Video, CheckSquare, Building2, User, Calendar, DollarSign, TrendingUp, ArrowRight, FileText, Send, ExternalLink, Loader2, Shield, ShieldCheck, ShieldX, Lock } from 'lucide-react';
+import { X, Phone, Mail, Video, CheckSquare, Building2, User, Calendar, DollarSign, TrendingUp, ArrowRight, FileText, Send, ExternalLink, Loader2, Shield, ShieldCheck, ShieldX, Lock, Eye, Copy, Check } from 'lucide-react';
 import { Opportunity, formatCurrency, formatDate, formatDateTime, WarRoomStatus } from '@/data/mockData';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -182,6 +182,28 @@ function OverviewTab({ deal }: { deal: Opportunity }) {
   );
 }
 
+function CopyButton({ url }: { url: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(url);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+  return (
+    <button
+      onClick={handleCopy}
+      className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+      title="Kopier kundelenke"
+    >
+      {copied ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
+      {copied ? 'Kopiert!' : 'Kopier lenke'}
+    </button>
+  );
+}
+
+const formatViewedAt = (ts: string) =>
+  new Date(ts).toLocaleString('nb-NO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+
 function OffersTab({ dealId, onNavigate }: { dealId: string; onNavigate: () => void }) {
   const [offers, setOffers] = useState<SalesCoreOffer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -223,33 +245,69 @@ function OffersTab({ dealId, onNavigate }: { dealId: string; onNavigate: () => v
     <div className="space-y-3">
       {offers.map((offer) => {
         const status = offerStatusLabel[offer.status] ?? { label: offer.status, cls: 'bg-muted text-muted-foreground' };
+        const isViewed = (offer.viewCount ?? 0) > 0;
         return (
-          <div key={offer.id} className="rounded-xl border border-border p-4 space-y-2">
+          <div key={offer.id} className={cn(
+            'rounded-xl border p-4 space-y-2.5',
+            isViewed ? 'border-emerald-400/40 bg-emerald-500/5' : 'border-border'
+          )}>
+            {/* Header row */}
             <div className="flex items-center justify-between">
               <span className="text-sm font-semibold text-foreground">{offer.packageName}</span>
               <span className={cn('text-xs font-semibold px-2 py-0.5 rounded-full', status.cls)}>
                 {status.label}
               </span>
             </div>
-            <div className="flex items-center gap-4 text-xs text-muted-foreground">
+
+            {/* Pricing */}
+            <div className="flex items-center gap-3 text-xs text-muted-foreground">
               <span>{offer.monthlyPricePerUnit} kr/mnd</span>
-              <span>· {offer.discountPercent}% rabatt</span>
-              <span>· {offer.units} enheter</span>
+              <span>·</span>
+              <span>{offer.discountPercent}% rabatt</span>
+              <span>·</span>
+              <span>{offer.units} enheter</span>
             </div>
-            <div className="flex items-center gap-4 text-xs text-muted-foreground">
-              <span>Gyldig til {offer.validUntil}</span>
-              <span>· {offer.salesRepName}</span>
+
+            {/* Tracking status */}
+            {isViewed ? (
+              <div className="flex items-center gap-2 py-1.5 px-2.5 rounded-lg bg-emerald-500/10 border border-emerald-400/30">
+                <Eye className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <span className="text-xs font-semibold text-emerald-700">
+                    Åpnet av kunde
+                    {offer.viewCount > 1 && ` · ${offer.viewCount} ganger`}
+                  </span>
+                  {offer.firstViewedAt && (
+                    <span className="text-xs text-emerald-600 block">
+                      Første gang {formatViewedAt(offer.firstViewedAt)}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ) : offer.status === 'sent' ? (
+              <div className="flex items-center gap-2 py-1.5 px-2.5 rounded-lg bg-muted/60 border border-border">
+                <Eye className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                <span className="text-xs text-muted-foreground">Sendt — ikke åpnet ennå</span>
+              </div>
+            ) : null}
+
+            {/* Meta + actions */}
+            <div className="flex items-center justify-between pt-0.5">
+              <span className="text-xs text-muted-foreground">Gyldig til {offer.validUntil} · {offer.salesRepName}</span>
+              <div className="flex items-center gap-3">
+                {offer.trackingUrl && <CopyButton url={offer.trackingUrl} />}
+                {offer.trackingUrl && (
+                  <a
+                    href={offer.trackingUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 text-xs text-primary hover:underline"
+                  >
+                    <ExternalLink className="w-3 h-3" /> Åpne
+                  </a>
+                )}
+              </div>
             </div>
-            {offer.trackingUrl && (
-              <a
-                href={offer.trackingUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1 text-xs text-primary hover:underline mt-1"
-              >
-                <ExternalLink className="w-3 h-3" /> Åpne kundeportal
-              </a>
-            )}
           </div>
         );
       })}

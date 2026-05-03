@@ -62,6 +62,8 @@ export interface SalesCoreOffer {
   salesRepName: string;
   trackingToken: string;
   trackingUrl: string;
+  firstViewedAt?: string;
+  viewCount: number;
   status: OfferStatus;
   validUntil: string;
   createdAt: string;
