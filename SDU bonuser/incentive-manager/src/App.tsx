@@ -888,30 +888,18 @@ function AgenciesView({ agencies, setAgencies, proposals, bonusLadder, products 
 }
 
 // ─── APP ──────────────────────────────────────────────────────────────────────
-const HUB_URL = (import.meta.env.VITE_HUB_URL as string | undefined) ?? 'http://localhost:5173';
 
-function bootstrapSession(requiredPermission: string): boolean {
-  try {
-    const params = new URLSearchParams(window.location.search);
-    const token = params.get('hub_session');
-    if (token) {
-      const user = JSON.parse(decodeURIComponent(token)) as { permissions: string[] };
-      localStorage.setItem('salgshub_session', JSON.stringify(user));
-      window.history.replaceState({}, '', window.location.pathname);
-    }
-    const raw = localStorage.getItem('salgshub_session');
-    if (!raw) return false;
-    const user = JSON.parse(raw) as { permissions: string[] };
-    return Array.isArray(user.permissions) && user.permissions.includes(requiredPermission);
-  } catch {
-    return false;
+// Bootstrap session from Hub link token
+try {
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get('hub_session');
+  if (token) {
+    localStorage.setItem('salgshub_session', decodeURIComponent(token));
+    window.history.replaceState({}, '', window.location.pathname);
   }
-}
+} catch { /* ignore */ }
 
 export default function App() {
-  useEffect(() => {
-    if (!bootstrapSession('sdu_incentives')) window.location.href = HUB_URL;
-  }, []);
 
   const [page, setPage]               = useState<'incentives' | 'approvals' | 'agencies' | 'admin'>('incentives');
   const [userRole, setUserRole]       = useState<'telenor' | 'agency'>('telenor');
