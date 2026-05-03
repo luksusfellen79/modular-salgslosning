@@ -7,6 +7,8 @@ export type OpportunityStage =
   | 'closed-won'
   | 'closed-lost';
 
+export type WarRoomStatus = 'pending' | 'approved' | 'rejected';
+
 export interface Opportunity {
   id: string;
   name: string;
@@ -19,6 +21,9 @@ export interface Opportunity {
   units: number;
   notes?: string;
   salesRepName?: string;
+  warRoomStatus?: WarRoomStatus;
+  warRoomNote?: string;
+  warRoomAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -70,7 +75,7 @@ export interface SseNotification {
 
 // ─── Auth: Brukerregister og tilgangsstyring ──────────────────────────────────
 
-export type AppPermission = 'mdu_crm' | 'sdu_crm' | 'sdu_planner' | 'sdu_incentives';
+export type AppPermission = 'mdu_crm' | 'mdu_leder' | 'sdu_crm' | 'sdu_planner' | 'sdu_incentives';
 export type UserRole = 'superadmin' | 'salgsleder' | 'selger_sdu' | 'selger_mdu';
 
 export interface HubUser {

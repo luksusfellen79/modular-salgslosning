@@ -123,6 +123,29 @@ router.patch('/api/opportunities/:id', (req: Request, res: Response) => {
   res.json(updatedOpportunity);
 });
 
+// War Room: send deal to war room / approve / reject
+router.patch('/api/opportunities/:id/warroom', (req: Request, res: Response) => {
+  const opportunities = readOpportunities();
+  const existing = opportunities.find((item) => item.id === req.params.id);
+  if (!existing) return res.status(404).json({ error: 'Opportunity not found' });
+
+  const { status, note } = req.body as { status: 'pending' | 'approved' | 'rejected'; note?: string };
+  if (!['pending', 'approved', 'rejected'].includes(status)) {
+    return res.status(400).json({ error: 'Invalid status' });
+  }
+
+  const updated: Opportunity = {
+    ...existing,
+    warRoomStatus: status,
+    warRoomNote: note ?? existing.warRoomNote,
+    warRoomAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  writeOpportunities(opportunities.map((o) => (o.id === existing.id ? updated : o)));
+  res.json(updated);
+});
+
 router.get('/api/offers', (req: Request, res: Response) => {
   const opportunityId = req.query.opportunityId;
   let offers = readOffers();

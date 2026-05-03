@@ -9,6 +9,8 @@ const BASE_URL = (import.meta.env.VITE_SALES_CORE_URL as string | undefined) ?? 
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+export type WarRoomStatus = 'pending' | 'approved' | 'rejected';
+
 export interface SalesCoreOpportunity {
   id: string;
   name: string;
@@ -22,6 +24,9 @@ export interface SalesCoreOpportunity {
   notes?: string;
   salesRepName?: string;
   createdBy?: string;
+  warRoomStatus?: WarRoomStatus;
+  warRoomNote?: string;
+  warRoomAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -132,6 +137,17 @@ export async function sendOffer(offerId: string): Promise<SalesCoreOffer> {
   return apiFetch<SalesCoreOffer>(`/api/offers/${offerId}`, {
     method: 'PATCH',
     body: JSON.stringify({ status: 'sent' }),
+  });
+}
+
+export async function updateOpportunityWarRoom(
+  id: string,
+  status: WarRoomStatus,
+  note?: string
+): Promise<SalesCoreOpportunity> {
+  return apiFetch<SalesCoreOpportunity>(`/api/opportunities/${id}/warroom`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status, note }),
   });
 }
 

@@ -1,20 +1,15 @@
-import { LayoutGrid, Users, Building2, TrendingUp, BarChart3, Settings, Zap, Flag } from 'lucide-react';
+import { LayoutGrid, Users, Building2, BarChart3, Settings, Zap } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
-import { useWarRoom } from '@/context/WarRoomContext';
 
 const navItems = [
   { label: 'Pipeline', to: '/', icon: LayoutGrid },
   { label: 'Offer Hub', to: '/offer-hub', icon: Zap },
-  { label: 'War Room', to: '/war-room', icon: Flag },
   { label: 'Leads', to: '/leads', icon: Users },
   { label: 'Accounts', to: '/accounts', icon: Building2 },
-  { label: 'Forecast', to: '/forecast', icon: TrendingUp },
-  { label: 'Reports', to: '/reports', icon: BarChart3 },
+  { label: 'Rapporter', to: '/reports', icon: BarChart3 },
 ];
 
 export function AppSidebar() {
-  const { items } = useWarRoom();
-  const pendingCount = items.filter((i) => i.status === 'pending').length;
   return (
     <aside className="fixed left-0 top-0 bottom-0 w-[240px] bg-sidebar text-sidebar-foreground flex flex-col z-30">
       {/* Logo */}
@@ -23,7 +18,7 @@ export function AppSidebar() {
           <div className="w-8 h-8 rounded-lg bg-sidebar-primary flex items-center justify-center">
             <LayoutGrid className="w-4 h-4 text-sidebar-primary-foreground" />
           </div>
-          <span className="text-base font-semibold text-sidebar-accent-foreground tracking-tight">SalesFlow</span>
+          <span className="text-base font-semibold text-sidebar-accent-foreground tracking-tight">MDU CRM</span>
         </div>
       </div>
 
@@ -39,11 +34,6 @@ export function AppSidebar() {
           >
             <item.icon className="w-[18px] h-[18px]" />
             <span className="flex-1">{item.label}</span>
-            {item.to === '/war-room' && pendingCount > 0 && (
-              <span className="ml-auto text-[10px] font-bold bg-primary text-primary-foreground rounded-full px-1.5 py-0.5 min-w-[18px] text-center">
-                {pendingCount}
-              </span>
-            )}
           </NavLink>
         ))}
       </nav>

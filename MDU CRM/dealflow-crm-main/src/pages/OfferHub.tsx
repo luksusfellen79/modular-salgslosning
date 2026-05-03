@@ -6,12 +6,12 @@ import { OfferPackageCard, OfferProductCard } from '@/components/offerhub/OfferP
 import { Send, Copy, CheckCheck, Flag, ArrowLeft, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { useWarRoom } from '@/context/WarRoomContext';
 import {
   fetchOpportunities,
   SalesCoreOpportunity,
   createOffer,
   sendOffer,
+  updateOpportunityWarRoom,
 } from '@/lib/salesCore';
 import {
   fetchMDUPackages,
@@ -112,7 +112,6 @@ export default function OfferHubPage() {
   const [sentToWarRoom, setSentToWarRoom] = useState(false);
   const [activeTab, setActiveTab] = useState<'products' | 'preview'>('products');
   const [isSending, setIsSending] = useState(false);
-  const { submit } = useWarRoom();
 
   useSalesCoreSSE();
 
@@ -220,24 +219,18 @@ export default function OfferHubPage() {
     setTimeout(() => setLinkCopied(false), 2000);
   }, [trackingUrl]);
 
-  const handleSendToWarRoom = useCallback(() => {
-    if (!deal || !selectedPackage) return;
-    submit({
-      dealId: deal.id,
-      dealName: deal.name,
-      accountName: deal.accountName,
-      value: discountedPrice * deal.units,
-      discount,
-      notes,
-      packageName: selectedPackage.name,
-      submittedBy: deal.owner.name,
-      units: deal.units,
-      pricePerUnit: discountedPrice,
-    });
-    setSentToWarRoom(true);
-    toast.info(`Sendt til War Room: ${deal.accountName}`);
-    setTimeout(() => setSentToWarRoom(false), 3000);
-  }, [deal, discountedPrice, discount, notes, selectedPackage, submit]);
+  const handleSendToWarRoom = useCallback(async () => {
+    if (!deal) return;
+    try {
+      await updateOpportunityWarRoom(deal.id, 'pending');
+      setSentToWarRoom(true);
+      toast.info(`Sendt til War Room: ${deal.accountName}`);
+      setTimeout(() => setSentToWarRoom(false), 3000);
+    } catch (e) {
+      toast.error('Kunne ikke sende til War Room');
+    }
+  }, [deal]);
+
 
   const productsByCategory = categoryOrder.map((cat) => ({
     category: cat,

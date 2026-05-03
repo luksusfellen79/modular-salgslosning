@@ -8,6 +8,7 @@ import { saveSession, getSession, clearSession } from './lib/session';
 // ─── Env ──────────────────────────────────────────────────────────────────────
 const APP_URLS: Record<AppPermission, string> = {
   mdu_crm:       (import.meta.env.VITE_MDU_CRM_URL       as string | undefined) ?? 'http://localhost:5174',
+  mdu_leder:     (import.meta.env.VITE_MDU_LEDER_URL     as string | undefined) ?? 'http://localhost:5178',
   sdu_crm:       (import.meta.env.VITE_SDU_CRM_URL       as string | undefined) ?? 'http://localhost:5175',
   sdu_planner:   (import.meta.env.VITE_SDU_PLANNER_URL   as string | undefined) ?? 'http://localhost:5176',
   sdu_incentives:(import.meta.env.VITE_SDU_INCENTIVES_URL as string | undefined) ?? 'http://localhost:5177',
@@ -44,6 +45,14 @@ const APP_CARDS: AppCard[] = [
     gradient: 'linear-gradient(135deg, #005A8E 0%, #003D61 100%)',
   },
   {
+    permission: 'mdu_leder',
+    title: 'MDU Leder',
+    subtitle: 'War Room, forecast og rapporter',
+    icon: '🛡️',
+    color: '#0F766E',
+    gradient: 'linear-gradient(135deg, #0F766E 0%, #064E3B 100%)',
+  },
+  {
     permission: 'sdu_crm',
     title: 'Feltsalg',
     subtitle: 'Dørsalg og kundeprofiler',
@@ -78,6 +87,7 @@ const ROLE_LABELS: Record<UserRole, string> = {
 
 const PERMISSION_LABELS: Record<AppPermission, string> = {
   mdu_crm:        'MDU CRM',
+  mdu_leder:      'MDU Leder',
   sdu_crm:        'Feltsalg',
   sdu_planner:    'SDU Planner',
   sdu_incentives: 'Incentiver',

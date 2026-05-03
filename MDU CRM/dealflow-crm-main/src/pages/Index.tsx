@@ -35,6 +35,8 @@ function toKanbanOpp(sc: SalesCoreOpportunity): Opportunity {
     contactName: sc.contactName ?? undefined,
     contactEmail: sc.contactEmail ?? undefined,
     createdDate: sc.createdAt,
+    warRoomStatus: sc.warRoomStatus,
+    warRoomNote: sc.warRoomNote,
   };
 }
 

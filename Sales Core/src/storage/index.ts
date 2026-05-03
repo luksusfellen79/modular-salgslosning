@@ -105,7 +105,7 @@ export function writeRounds(data: Round[]): void {
 
 // ─── Auth: Brukerregister ─────────────────────────────────────────────────────
 
-const ALL_PERMISSIONS: AppPermission[] = ['mdu_crm', 'sdu_crm', 'sdu_planner', 'sdu_incentives'];
+const ALL_PERMISSIONS: AppPermission[] = ['mdu_crm', 'mdu_leder', 'sdu_crm', 'sdu_planner', 'sdu_incentives'];
 
 const USER_SEED: HubUser[] = [
   {
@@ -126,6 +126,17 @@ const USER_SEED: HubUser[] = [
     pin: '1234',
     role: 'salgsleder',
     permissions: ['sdu_planner', 'sdu_incentives', 'sdu_crm'],
+    isActive: true,
+    createdAt: '2026-01-15T08:00:00Z',
+    createdBy: 'usr-1',
+  },
+  {
+    id: 'usr-6',
+    name: 'Nina Lund',
+    email: 'nina.lund@telenor.com',
+    pin: '1234',
+    role: 'salgsleder',
+    permissions: ['mdu_leder', 'mdu_crm'],
     isActive: true,
     createdAt: '2026-01-15T08:00:00Z',
     createdBy: 'usr-1',
@@ -175,6 +186,21 @@ export function readUsers(): HubUser[] {
     return USER_SEED;
   }
   _usersBootstrapped = true;
+
+  // Backfill: ensure superadmin always has mdu_leder permission
+  const needsWrite = stored.some(
+    (u) => u.role === 'superadmin' && !u.permissions.includes('mdu_leder')
+  );
+  if (needsWrite) {
+    const patched = stored.map((u) =>
+      u.role === 'superadmin' && !u.permissions.includes('mdu_leder')
+        ? { ...u, permissions: [...u.permissions, 'mdu_leder'] as AppPermission[] }
+        : u
+    );
+    writeJsonFile('auth-users.json', patched);
+    return patched;
+  }
+
   return stored;
 }
 

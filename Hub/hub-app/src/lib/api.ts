@@ -1,6 +1,6 @@
 const SALES_CORE = (import.meta.env.VITE_SALES_CORE_URL as string | undefined) ?? 'http://localhost:3005';
 
-export type AppPermission = 'mdu_crm' | 'sdu_crm' | 'sdu_planner' | 'sdu_incentives';
+export type AppPermission = 'mdu_crm' | 'mdu_leder' | 'sdu_crm' | 'sdu_planner' | 'sdu_incentives';
 export type UserRole = 'superadmin' | 'salgsleder' | 'selger_sdu' | 'selger_mdu';
 
 export interface HubUser {

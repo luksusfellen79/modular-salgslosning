@@ -1,6 +1,5 @@
 import { Opportunity, formatCurrency, formatDate } from '@/data/mockData';
-import { Calendar, DollarSign, Flag } from 'lucide-react';
-import { useWarRoom } from '@/context/WarRoomContext';
+import { Calendar, DollarSign, Lock, ShieldCheck, ShieldX } from 'lucide-react';
 
 interface DealCardProps {
   deal: Opportunity;
@@ -8,8 +7,8 @@ interface DealCardProps {
 }
 
 export function DealCard({ deal, onClick }: DealCardProps) {
-  const { isInWarRoom } = useWarRoom();
-  const warRoomItem = isInWarRoom(deal.name, deal.accountName, deal.id);
+  const wr = deal.warRoomStatus;
+
   return (
     <div
       draggable
@@ -23,18 +22,30 @@ export function DealCard({ deal, onClick }: DealCardProps) {
       <div className="flex items-start justify-between mb-2">
         <div className="flex items-center gap-1.5 flex-1 min-w-0">
           <p className="text-xs font-medium text-muted-foreground truncate">{deal.accountName}</p>
-          {warRoomItem && (
+          {wr === 'pending' && (
             <span
-              title={`In War Room (${warRoomItem.status})`}
-              className={`inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0 ${
-                warRoomItem.status === 'approved'
-                  ? 'bg-success/15 text-success'
-                  : warRoomItem.status === 'rejected'
-                  ? 'bg-destructive/15 text-destructive'
-                  : 'bg-primary/15 text-primary'
-              }`}
+              title="Venter War Room-godkjenning"
+              className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0 bg-amber-500/15 text-amber-600"
             >
-              <Flag className="w-2.5 h-2.5" />
+              <Lock className="w-2.5 h-2.5" />
+              WR
+            </span>
+          )}
+          {wr === 'approved' && (
+            <span
+              title="Godkjent av War Room"
+              className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0 bg-emerald-500/15 text-emerald-600"
+            >
+              <ShieldCheck className="w-2.5 h-2.5" />
+              WR
+            </span>
+          )}
+          {wr === 'rejected' && (
+            <span
+              title="Avvist av War Room"
+              className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0 bg-destructive/15 text-destructive"
+            >
+              <ShieldX className="w-2.5 h-2.5" />
               WR
             </span>
           )}

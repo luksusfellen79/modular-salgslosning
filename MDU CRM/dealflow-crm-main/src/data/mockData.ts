@@ -1,5 +1,7 @@
 // Typer og hjelpefunksjoner — mock-arrays er fjernet, data hentes fra Sales Core
 
+export type WarRoomStatus = 'pending' | 'approved' | 'rejected';
+
 export interface Opportunity {
   id: string;
   name: string;
@@ -17,6 +19,8 @@ export interface Opportunity {
   source?: string;
   type?: string;
   createdDate: string;
+  warRoomStatus?: WarRoomStatus;
+  warRoomNote?: string;
 }
 
 export interface Activity {

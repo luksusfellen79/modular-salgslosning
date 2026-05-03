@@ -1,8 +1,8 @@
-import { X, Phone, Mail, Video, CheckSquare, Building2, User, Calendar, DollarSign, TrendingUp, ArrowRight, FileText, Send, ExternalLink, Loader2 } from 'lucide-react';
-import { Opportunity, formatCurrency, formatDate, formatDateTime } from '@/data/mockData';
+import { X, Phone, Mail, Video, CheckSquare, Building2, User, Calendar, DollarSign, TrendingUp, ArrowRight, FileText, Send, ExternalLink, Loader2, Shield, ShieldCheck, ShieldX, Lock } from 'lucide-react';
+import { Opportunity, formatCurrency, formatDate, formatDateTime, WarRoomStatus } from '@/data/mockData';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { fetchOffersByOpportunity, SalesCoreOffer } from '@/lib/salesCore';
+import { fetchOffersByOpportunity, SalesCoreOffer, updateOpportunityWarRoom } from '@/lib/salesCore';
 import { cn } from '@/lib/utils';
 
 interface SidePanelProps {
@@ -23,7 +23,44 @@ const offerStatusLabel: Record<string, { label: string; cls: string }> = {
 
 export function SidePanel({ deal, onClose }: SidePanelProps) {
   const [activeTab, setActiveTab] = useState<typeof tabs[number]>('Overview');
+  const [warRoomStatus, setWarRoomStatus] = useState<WarRoomStatus | undefined>(deal.warRoomStatus);
+  const [warRoomNote, setWarRoomNote] = useState<string | undefined>(deal.warRoomNote);
+  const [sendingToWarRoom, setSendingToWarRoom] = useState(false);
   const navigate = useNavigate();
+
+  const isFrozen = warRoomStatus === 'pending';
+
+  async function handleSendToWarRoom() {
+    setSendingToWarRoom(true);
+    try {
+      const updated = await updateOpportunityWarRoom(deal.id, 'pending');
+      setWarRoomStatus(updated.warRoomStatus);
+      setWarRoomNote(updated.warRoomNote);
+    } catch (e) {
+      console.error('War Room feil:', e);
+    } finally {
+      setSendingToWarRoom(false);
+    }
+  }
+
+  const warRoomBadge = () => {
+    if (warRoomStatus === 'pending') return (
+      <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/15 text-amber-600 text-xs font-semibold">
+        <Lock className="w-3 h-3" /> Venter godkjenning
+      </span>
+    );
+    if (warRoomStatus === 'approved') return (
+      <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-600 text-xs font-semibold">
+        <ShieldCheck className="w-3 h-3" /> Godkjent
+      </span>
+    );
+    if (warRoomStatus === 'rejected') return (
+      <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-destructive/15 text-destructive text-xs font-semibold">
+        <ShieldX className="w-3 h-3" /> Avvist
+      </span>
+    );
+    return null;
+  };
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end" onClick={onClose}>
@@ -40,9 +77,20 @@ export function SidePanel({ deal, onClose }: SidePanelProps) {
               <h2 className="text-lg font-bold text-foreground truncate">{deal.name}</h2>
             </div>
             <div className="flex items-center gap-2 ml-4">
+              {!warRoomStatus && (
+                <button
+                  onClick={handleSendToWarRoom}
+                  disabled={sendingToWarRoom}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary text-foreground text-xs font-semibold hover:bg-accent transition-colors disabled:opacity-50"
+                >
+                  {sendingToWarRoom ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Shield className="w-3.5 h-3.5" />}
+                  War Room
+                </button>
+              )}
               <button
                 onClick={() => { onClose(); navigate(`/offer-hub?opportunityId=${deal.id}`); }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors"
+                disabled={isFrozen}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <FileText className="w-3.5 h-3.5" />
                 Bygg tilbud
@@ -52,6 +100,17 @@ export function SidePanel({ deal, onClose }: SidePanelProps) {
               </button>
             </div>
           </div>
+
+          {/* War Room status badge + note */}
+          {warRoomStatus && (
+            <div className="mb-3 flex flex-col gap-1.5">
+              {warRoomBadge()}
+              {warRoomStatus === 'rejected' && warRoomNote && (
+                <p className="text-xs text-muted-foreground pl-1">Kommentar: {warRoomNote}</p>
+              )}
+            </div>
+          )}
+
           <div className="flex items-center gap-4 text-sm">
             <span className="flex items-center gap-1.5 font-semibold text-foreground">
               <DollarSign className="w-4 h-4 text-primary" />
