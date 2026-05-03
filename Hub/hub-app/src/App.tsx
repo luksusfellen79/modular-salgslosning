@@ -202,6 +202,11 @@ function LoginPage({ onLogin }: { onLogin: (user: HubUser) => void }) {
 }
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
+function appUrl(baseUrl: string, user: HubUser): string {
+  const token = btoa(JSON.stringify(user));
+  return `${baseUrl}?hub_session=${encodeURIComponent(token)}`;
+}
+
 function Dashboard({ user, stats, onAdmin, onLogout }: { user: HubUser; stats: SalesStats | null; onAdmin: () => void; onLogout: () => void }) {
   const userCards = APP_CARDS.filter(c => user.permissions.includes(c.permission));
 
@@ -270,7 +275,7 @@ function Dashboard({ user, stats, onAdmin, onLogout }: { user: HubUser; stats: S
           {userCards.map(card => (
             <a
               key={card.permission}
-              href={APP_URLS[card.permission]}
+              href={appUrl(APP_URLS[card.permission], user)}
               target="_blank"
               rel="noopener noreferrer"
               style={{ textDecoration: 'none', display: 'block', borderRadius: 18, overflow: 'hidden', boxShadow: '0 4px 20px rgba(0,0,0,0.08)', transition: 'transform 0.2s, box-shadow 0.2s' }}
