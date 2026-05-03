@@ -704,9 +704,7 @@ export default function App() {
         email: '',
         phone: '',
         role: 'seller',
-        sfId: '',
         isActive: true,
-        createdAt: new Date().toISOString(),
       };
       setSeller(resolvedSeller);
       setScreen('round_picker');
@@ -718,9 +716,7 @@ export default function App() {
         email: '',
         phone: '',
         role: 'seller',
-        sfId: '',
         isActive: true,
-        createdAt: new Date().toISOString(),
       });
       setScreen('round_picker');
     });
