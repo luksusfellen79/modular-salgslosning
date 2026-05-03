@@ -36,7 +36,15 @@ function writeJsonFile<T>(fileName: string, data: T): void {
 }
 
 export function readOpportunities(): Opportunity[] {
-  return readJsonFile<Opportunity[]>('opportunities.json');
+  const opps = readJsonFile<Opportunity[]>('opportunities.json');
+  // Backfill: set salesRepName on any existing opportunity that lacks it
+  const needsWrite = opps.some(o => !o.salesRepName);
+  if (needsWrite) {
+    const patched = opps.map(o => o.salesRepName ? o : { ...o, salesRepName: 'Jørn Haga' });
+    writeJsonFile('opportunities.json', patched);
+    return patched;
+  }
+  return opps;
 }
 
 export function writeOpportunities(data: Opportunity[]): void {

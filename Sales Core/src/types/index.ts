@@ -18,6 +18,7 @@ export interface Opportunity {
   estimatedAnnualValue: number;
   units: number;
   notes?: string;
+  salesRepName?: string;
   createdAt: string;
   updatedAt: string;
 }
