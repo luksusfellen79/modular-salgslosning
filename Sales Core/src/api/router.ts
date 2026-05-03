@@ -213,6 +213,7 @@ router.post('/api/offers', (req: Request, res: Response) => {
     trackingToken: uuid(),
     status: 'draft',
     validUntil: body.validUntil,
+    viewCount: 0,
     createdAt: now,
     updatedAt: now,
   };
