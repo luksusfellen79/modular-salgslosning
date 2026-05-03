@@ -899,7 +899,20 @@ try {
   }
 } catch { /* ignore */ }
 
+function getSessionUser(): { name: string; role: string } {
+  try {
+    const raw = localStorage.getItem('salgshub_session');
+    if (!raw) return { name: 'Telenor', role: '' };
+    const u = JSON.parse(raw) as { name?: string; role?: string };
+    return { name: u.name ?? 'Telenor', role: u.role ?? '' };
+  } catch {
+    return { name: 'Telenor', role: '' };
+  }
+}
+
 export default function App() {
+
+  const sessionUser = getSessionUser();
 
   const [page, setPage]               = useState<'incentives' | 'approvals' | 'agencies' | 'admin'>('incentives');
   const [userRole, setUserRole]       = useState<'telenor' | 'agency'>('telenor');
@@ -988,7 +1001,7 @@ export default function App() {
         id: uid(), ts: nowStr(), agencyName: p.agencyName,
         productName: `Bonustrapp trinn ${p.tier}`, category: 'bonus',
         incentiveName: `${p.oldVal.toLocaleString('nb-NO')} → ${p.newVal.toLocaleString('nb-NO')} kr`,
-        action: 'live', changedBy: p.agencyName,
+        action: 'live', changedBy: sessionUser.name,
       }]);
       showToast(`Bonusnivå ${p.tier} oppdatert`);
       return;
@@ -997,7 +1010,7 @@ export default function App() {
     setAuditLog(prev => [...prev, {
       id: uid(), ts: nowStr(), agencyName: p.agencyName,
       productName: p.productName, category: p.category,
-      incentiveName: p.incentive.name, action: 'live', changedBy: p.agencyName,
+      incentiveName: p.incentive.name, action: 'live', changedBy: sessionUser.name,
     }]);
     try {
       const updated = await addProductIncentive(p.productId, p.incentive);
@@ -1022,13 +1035,13 @@ export default function App() {
         id: uid(), ts: nowStr(), agencyName: p.agencyName,
         productName: `Bonustrapp trinn ${p.tier}`, category: 'bonus',
         incentiveName: `${p.oldVal.toLocaleString('nb-NO')} → ${p.newVal.toLocaleString('nb-NO')} kr`,
-        action: 'rejected', changedBy: p.agencyName,
+        action: 'rejected', changedBy: sessionUser.name,
       }]);
     } else {
       setAuditLog(prev => [...prev, {
         id: uid(), ts: nowStr(), agencyName: p.agencyName,
         productName: p.productName, category: p.category,
-        incentiveName: p.incentive.name, action: 'rejected', changedBy: p.agencyName,
+        incentiveName: p.incentive.name, action: 'rejected', changedBy: sessionUser.name,
       }]);
     }
     showToast('Forslag avvist');
@@ -1041,7 +1054,7 @@ export default function App() {
       setAuditLog(prev => [...prev, {
         id: uid(), ts: nowStr(), agencyName: '—',
         productName: product.name, category: product.category,
-        incentiveName: inc.name, action: 'removed', changedBy: 'Telenor',
+        incentiveName: inc.name, action: 'removed', changedBy: sessionUser.name,
       }]);
       showToast(`Insentiv fjernet`);
     } catch {
@@ -1072,6 +1085,14 @@ export default function App() {
         </div>
 
         <div style={s.navRight}>
+          {/* Logged-in user */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginRight: 8 }}>
+            <span style={{ fontSize: 13, color: T.gray600 }}>{sessionUser.name}</span>
+            <div style={{ width: 30, height: 30, borderRadius: '50%', background: T.blue, color: T.white, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700 }}>
+              {sessionUser.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
+            </div>
+          </div>
+          <div style={s.navDivider} />
           {userRole === 'telenor' && (
             <>
               <button style={s.navTab(page === 'incentives')} onClick={() => setPage('incentives')}>Insentiver</button>
