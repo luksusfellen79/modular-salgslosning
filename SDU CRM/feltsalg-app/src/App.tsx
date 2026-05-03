@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { Resident, Campaign, VisitStatus, VisitOutcome } from './lib/types';
+import { Resident, Campaign, UpsellProduct, VisitStatus, VisitOutcome } from './lib/types';
 import { fetchResidents, logSDUOutcome } from './lib/kasCore';
 import { fetchSellers, fetchRoundsForSeller, updateUnitVisit, Round, RoundUnit, Seller, UnitVisitStatus } from './lib/salesCore';
 
@@ -309,39 +309,51 @@ function CampaignPanel({
   onOutcome: (outcome: VisitOutcome, campaign: Campaign, extraProducts: string[]) => void;
 }) {
   const [activeIdx, setActiveIdx] = useState(0);
-  const [extraOpen, setExtraOpen] = useState(false);
-  const [extraSel, setExtraSel] = useState<string[]>([]);
+  const [extraSel, setExtraSel] = useState<UpsellProduct[]>([]);
   const camp = campaigns[activeIdx];
 
-  const toggleExtra = (p: string) =>
-    setExtraSel((s) => (s.includes(p) ? s.filter((x) => x !== p) : [...s, p]));
+  const toggleExtra = (p: UpsellProduct) =>
+    setExtraSel((s) =>
+      s.some((x) => x.name === p.name) ? s.filter((x) => x.name !== p.name) : [...s, p]
+    );
+
+  const totalCount = 1 + extraSel.length;
+  const extraTotal = extraSel.reduce((sum, p) => sum + p.price, 0);
+  const grandTotal = camp.priceNumber + extraTotal;
+  const formatKr = (n: number) => n.toLocaleString('nb-NO') + ' kr/md';
 
   return (
     <div>
-      <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">
-        Kampanjer ({campaigns.length})
-      </div>
-      <div className="flex gap-1.5 mb-3">
-        {campaigns.map((c, i) => (
-          <button
-            key={c.id}
-            onClick={() => { setActiveIdx(i); setExtraOpen(false); setExtraSel([]); }}
-            className="flex-1 py-1.5 rounded-lg text-[11px] font-semibold transition-all"
-            style={{
-              background: activeIdx === i ? camp.color : '#F3F4F6',
-              color: activeIdx === i ? '#fff' : '#6B7280',
-            }}
-          >
-            {c.tag}
-          </button>
-        ))}
-      </div>
+      {/* Campaign tabs — only shown when there are multiple */}
+      {campaigns.length > 1 && (
+        <>
+          <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">
+            Kampanjer ({campaigns.length})
+          </div>
+          <div className="flex gap-1.5 mb-3">
+            {campaigns.map((c, i) => (
+              <button
+                key={c.id}
+                onClick={() => { setActiveIdx(i); setExtraSel([]); }}
+                className="flex-1 py-1.5 rounded-lg text-[11px] font-semibold transition-all"
+                style={{
+                  background: activeIdx === i ? camp.color : '#F3F4F6',
+                  color: activeIdx === i ? '#fff' : '#6B7280',
+                }}
+              >
+                {c.tag}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
 
       <div
         className="rounded-xl p-4 mb-3"
         style={{ background: '#EFF8FF', border: `1.5px solid ${camp.color}40` }}
       >
-        <div className="flex items-start justify-between mb-3">
+        {/* Header */}
+        <div className="flex items-start justify-between mb-2">
           <div className="font-bold text-sm text-gray-900">{camp.name}</div>
           <span
             className="text-[10px] font-bold px-2 py-0.5 rounded-full ml-2 shrink-0"
@@ -351,74 +363,127 @@ function CampaignPanel({
           </span>
         </div>
 
-        <div className="bg-white rounded-lg p-3 mb-3 flex items-center justify-between" style={{ border: `1px solid ${camp.color}25` }}>
-          <div>
-            <div className="font-bold text-sm text-gray-900">{camp.product}</div>
-            <div className="font-semibold text-sm mt-0.5" style={{ color: camp.color }}>{camp.price}</div>
-          </div>
-          {camp.discount !== '—' && (
-            <div className="text-white text-xs font-bold px-2.5 py-1 rounded-lg shrink-0" style={{ background: camp.color }}>
-              -{camp.discount}
+        <p className="text-xs text-gray-600 leading-relaxed mb-3">{camp.pitch}</p>
+
+        {/* ── Produktvalg ── */}
+        <div className="bg-white rounded-xl mb-3 overflow-hidden" style={{ border: `1.5px solid ${camp.color}30` }}>
+          <div className="px-3 pt-3 pb-2">
+            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Valgte produkter</div>
+
+            {/* Main campaign product — alltid inkludert */}
+            <div className="flex items-center justify-between py-2 border-b border-gray-100">
+              <div className="flex items-center gap-2.5">
+                <div
+                  className="w-5 h-5 rounded-full flex items-center justify-center shrink-0"
+                  style={{ background: camp.color }}
+                >
+                  <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
+                    <path d="M20 6L9 17l-5-5" />
+                  </svg>
+                </div>
+                <div>
+                  <div className="font-semibold text-sm text-gray-900 leading-tight">{camp.product}</div>
+                  {camp.discount !== '—' && (
+                    <div className="text-[10px] text-gray-400 mt-0.5">Rabatt: -{camp.discount}</div>
+                  )}
+                </div>
+              </div>
+              <div className="font-bold text-sm shrink-0 ml-2" style={{ color: camp.color }}>{camp.price}</div>
             </div>
-          )}
+
+            {/* Ekstra / upsell */}
+            {resident.upsellProducts.length > 0 && (
+              <div className="mt-2 space-y-1.5">
+                <div className="text-[10px] font-medium text-gray-400">Legg til tillegg:</div>
+                {resident.upsellProducts.map((p) => {
+                  const selected = extraSel.some((x) => x.name === p.name);
+                  return (
+                    <button
+                      key={p.name}
+                      onClick={() => toggleExtra(p)}
+                      className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm font-medium transition-all text-left"
+                      style={{
+                        background: selected ? '#E6F7FF' : '#F9FAFB',
+                        border: `1.5px solid ${selected ? '#01ACFB' : '#E5E7EB'}`,
+                        color: selected ? '#005A8E' : '#374151',
+                      }}
+                    >
+                      <div
+                        className="w-5 h-5 rounded-full flex items-center justify-center shrink-0 transition-all"
+                        style={{
+                          background: selected ? '#01ACFB' : '#fff',
+                          border: `1.5px solid ${selected ? '#01ACFB' : '#D1D5DB'}`,
+                        }}
+                      >
+                        {selected && (
+                          <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
+                            <path d="M20 6L9 17l-5-5" />
+                          </svg>
+                        )}
+                      </div>
+                      <span className="flex-1">{p.name}</span>
+                      <span className="text-xs font-semibold shrink-0" style={{ color: selected ? '#005A8E' : '#9CA3AF' }}>
+                        +{p.price.toLocaleString('nb-NO')} kr/md
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Sum-boks */}
+          <div
+            className="px-3 py-2.5 mt-1 flex items-center justify-between"
+            style={{ background: `${camp.color}12`, borderTop: `1px solid ${camp.color}25` }}
+          >
+            <div>
+              <div className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
+                {totalCount === 1 ? '1 produkt valgt' : `${totalCount} produkter valgt`}
+              </div>
+              <div className="text-[10px] text-gray-400 mt-0.5">
+                {[camp.product, ...extraSel.map((p) => p.name)].join(' · ')}
+              </div>
+            </div>
+            <div className="text-right shrink-0 ml-3">
+              <div className="font-bold text-lg leading-tight" style={{ color: camp.color }}>
+                {formatKr(grandTotal)}
+              </div>
+              {extraSel.length > 0 && (
+                <div className="text-[10px] text-gray-400">
+                  {formatKr(camp.priceNumber)} + {formatKr(extraTotal)}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
-        <p className="text-xs text-gray-600 leading-relaxed mb-4">{camp.pitch}</p>
-
-        <div className="flex gap-2 mb-2">
+        {/* Solgt / Nei-knapper */}
+        <div className="flex gap-2">
           <button
-            onClick={() => onOutcome('sold', camp, extraSel)}
-            className="flex-1 py-2.5 rounded-xl text-white text-sm font-bold flex items-center justify-center gap-1.5 active:scale-[0.97] transition-all"
+            onClick={() => onOutcome('sold', camp, extraSel.map((p) => p.name))}
+            className="flex-1 py-3 rounded-xl text-white text-sm font-bold flex items-center justify-center gap-1.5 active:scale-[0.97] transition-all"
             style={{ background: '#00A650' }}
           >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}><path d="M20 6L9 17l-5-5" /></svg>
-            Solgt!
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+              <path d="M20 6L9 17l-5-5" />
+            </svg>
+            {totalCount > 1 ? `Solgt (${totalCount} prod.)` : 'Solgt!'}
           </button>
           <button
             onClick={() => onOutcome('rejected', camp, [])}
-            className="flex-1 py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-1.5 active:scale-[0.97] transition-all"
+            className="flex-1 py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-1.5 active:scale-[0.97] transition-all"
             style={{ background: '#FDECEA', color: '#E5202E', border: '1px solid #E5202E30' }}
           >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}><path d="M18 6L6 18M6 6l12 12" /></svg>
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
             Nei takk
           </button>
         </div>
-
-        <button
-          onClick={() => setExtraOpen((o) => !o)}
-          className="w-full py-2 rounded-xl text-xs font-semibold text-telenor-blue-dark border border-dashed border-telenor-blue/40 flex items-center justify-center gap-1.5 hover:bg-telenor-blue-light transition-colors"
-        >
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
-            {extraOpen
-              ? <path d="M5 12h14" />
-              : <><path d="M12 5v14" /><path d="M5 12h14" /></>}
-          </svg>
-          {extraOpen ? 'Skjul tillegg' : 'Legg til flere produkter'}
-        </button>
-
-        {extraOpen && resident.upsellProducts.length > 0 && (
-          <div className="mt-2 space-y-1.5">
-            {resident.upsellProducts.map((p) => (
-              <button
-                key={p}
-                onClick={() => toggleExtra(p)}
-                className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-all"
-                style={{
-                  background: extraSel.includes(p) ? '#E6F7FF' : '#fff',
-                  border: `1.5px solid ${extraSel.includes(p) ? '#01ACFB' : '#E5E7EB'}`,
-                  color: extraSel.includes(p) ? '#005A8E' : '#374151',
-                }}
-              >
-                {p}
-                {extraSel.includes(p)
-                  ? <svg className="w-4 h-4 text-telenor-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}><path d="M20 6L9 17l-5-5" /></svg>
-                  : <svg className="w-4 h-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}><path d="M12 5v14M5 12h14" /></svg>}
-              </button>
-            ))}
-          </div>
-        )}
       </div>
 
+      {/* Andre utfall */}
       <div className="grid grid-cols-2 gap-2">
         <button
           onClick={() => onOutcome('no_answer', camp, [])}

@@ -17,7 +17,7 @@ export interface Resident {
   customerSince?: string;
   interestScores: InterestScores;
   campaigns: Campaign[];
-  upsellProducts: string[];
+  upsellProducts: UpsellProduct[];
 }
 
 export interface Customer {
@@ -37,7 +37,7 @@ export interface Customer {
   accountValue: number;
   interestScores: InterestScores;
   campaigns: Campaign[];
-  upsellProducts: string[];
+  upsellProducts: UpsellProduct[];
 }
 
 export interface CustomerProduct {
@@ -60,9 +60,15 @@ export interface Campaign {
   tag: string;
   product: string;
   price: string;
+  priceNumber: number;
   discount: string;
   pitch: string;
   color: string;
+}
+
+export interface UpsellProduct {
+  name: string;
+  price: number;
 }
 
 export interface ResidentSummary {

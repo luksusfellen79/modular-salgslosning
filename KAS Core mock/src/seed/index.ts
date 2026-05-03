@@ -6,6 +6,7 @@ import {
   CustomerProduct,
   InterestScores,
   Resident,
+  UpsellProduct,
 } from '../types';
 
 const BUILDING_METADATA = {
@@ -51,71 +52,79 @@ const CAMPAIGN_TEMPLATES = {
   nykunde: {
     name: 'Nykundetilbud',
     tag: 'Nykunde',
-    product: 'Fiber 500/500',
-    price: '299 kr/md i 6 mnd',
-    discount: '50%',
-    pitch: 'Halvpris i 6 måneder. Ingen bindingstid.',
+    product: 'Bredbånd 500',
+    price: '2 000 kr/md',
+    priceNumber: 2000,
+    discount: '—',
+    pitch: 'Bredbånd 500 Mbps til hjemmet. Ingen bindingstid.',
     color: '#00A650',
   },
   winback: {
     name: 'Tilbakevinn',
     tag: 'Win-back',
-    product: 'Fiber 500/500',
-    price: '399 kr/md i 6 mnd',
-    discount: '40%',
-    pitch: '40% rabatt i 6 måneder + gratis router for tidligere kunder.',
+    product: 'Bredbånd 500',
+    price: '2 000 kr/md',
+    priceNumber: 2000,
+    discount: '—',
+    pitch: 'Velkommen tilbake! Bredbånd 500 Mbps — kom i gang igjen i dag.',
     color: '#7B2D8B',
   },
   upsellFiber: {
-    name: 'Upsell Fiber 1G',
+    name: 'Oppgrader til Bredbånd 1000',
     tag: 'Upsell',
-    product: 'Fiber 1G/1G',
-    price: '599 kr/md',
-    discount: '15%',
-    pitch: '15% rabatt på oppgradering de neste 30 dagene.',
+    product: 'Bredbånd 1000',
+    price: '3 000 kr/md',
+    priceNumber: 3000,
+    discount: '—',
+    pitch: 'Dobbel hastighet — oppgrader til gigabit i dag.',
     color: '#0085C3',
   },
   tvUpsell: {
-    name: 'TV-pakke tilbud',
+    name: 'Bredbånd 500 – TV-tilbud',
     tag: 'TV',
-    product: 'TV Total',
-    price: '299 kr/md',
-    discount: '20%',
-    pitch: '20% rabatt på TV Total i 12 måneder. Inkluderer strømming.',
+    product: 'Bredbånd 500',
+    price: '2 000 kr/md',
+    priceNumber: 2000,
+    discount: '—',
+    pitch: 'Koble til hjemmet ditt med 500 Mbps. Legg til TV-pakke som tillegg.',
     color: '#005A8E',
   },
   sikre: {
-    name: 'Sikre-pakke',
+    name: 'Bredbånd 500 – Sikker pakke',
     tag: 'Sikre',
-    product: 'Sikre med bredbånd',
-    price: '549 kr/md',
-    discount: '15%',
-    pitch: 'ID-vakt, svindelforsikring og Nettvern+ inkludert.',
+    product: 'Bredbånd 500',
+    price: '2 000 kr/md',
+    priceNumber: 2000,
+    discount: '—',
+    pitch: 'Bredbånd 500 med Safe og Forsikring inkludert.',
     color: '#00A650',
   },
   mobil: {
-    name: 'Mobilkampanje',
-    tag: 'Mobil',
-    product: 'Mobil Fri+',
-    price: '449 kr/md',
-    discount: '25%',
-    pitch: 'Ubegrenset data og fri tale. Bytt nå og spar 150 kr/md.',
+    name: 'Bredbånd 1000 – Beste hastighet',
+    tag: 'Giga',
+    product: 'Bredbånd 1000',
+    price: '3 000 kr/md',
+    priceNumber: 3000,
+    discount: '—',
+    pitch: 'Full gigabit — perfekt for storbrukere og hjemmekontor.',
     color: '#7B2D8B',
   },
   bundle: {
-    name: 'Dobbelpakke',
-    tag: 'Bundle',
-    product: 'Fiber 500 + Mobil',
-    price: '699 kr/md',
-    discount: '35%',
-    pitch: 'Internett og mobil i én pakke. Spar 35% de første 6 mnd.',
+    name: 'Bredbånd 1000 – Komplett',
+    tag: 'Komplett',
+    product: 'Bredbånd 1000',
+    price: '3 000 kr/md',
+    priceNumber: 3000,
+    discount: '—',
+    pitch: 'Gigabit bredbånd med alle tillegg. Den komplette pakken.',
     color: '#F5A623',
   },
   produktX: {
-    name: 'Produkt X Pilot',
+    name: 'Bredbånd 500 – Pilot',
     tag: 'Pilot',
-    product: 'Produkt X',
-    price: '199 kr/md',
+    product: 'Bredbånd 500',
+    price: '2 000 kr/md',
+    priceNumber: 2000,
     discount: '—',
     pitch: 'Eksklusivt pilot-tilbud. Kun tilgjengelig i ditt område.',
     color: '#F5A623',
@@ -296,6 +305,7 @@ function buildCampaign(template: typeof CAMPAIGN_TEMPLATES[keyof typeof CAMPAIGN
     tag: template.tag,
     product: template.product,
     price: template.price,
+    priceNumber: template.priceNumber,
     discount: template.discount,
     pitch: template.pitch,
     color: template.color,
@@ -339,31 +349,12 @@ function chooseCampaigns(resident: Resident): Campaign[] {
   return uniqueCampaigns.map((key) => buildCampaign(CAMPAIGN_TEMPLATES[key], resident));
 }
 
-function buildUpsellProducts(resident: Resident): string[] {
-  const suggestions: string[] = [];
-  const hasInternet = resident.existingProducts.some((product) => INTERNET_PRODUCTS.includes(product as typeof INTERNET_PRODUCTS[number]));
-  const hasTv = resident.existingProducts.some((product) => TV_PRODUCTS.includes(product as typeof TV_PRODUCTS[number]));
-  const hasMobile = resident.existingProducts.some((product) => MOBILE_PRODUCTS.includes(product as typeof MOBILE_PRODUCTS[number]));
-
-  if (!hasInternet) {
-    suggestions.push('Fiber 500/500');
-  } else if (!resident.existingProducts.includes('Fiber 1G/1G')) {
-    suggestions.push('Fiber 1G/1G');
-  }
-
-  if (!hasTv) {
-    suggestions.push('TV Total');
-  }
-
-  if (!hasMobile) {
-    suggestions.push('Mobil Fri+');
-  }
-
-  if (!suggestions.includes('Produkt X')) {
-    suggestions.push('Produkt X');
-  }
-
-  return suggestions.slice(0, 3);
+function buildUpsellProducts(): UpsellProduct[] {
+  return [
+    { name: 'Safe',        price: 100 },
+    { name: 'Forsikring',  price: 100 },
+    { name: 'Wifi router', price: 100 },
+  ];
 }
 
 function buildCustomer(record: Resident): Customer {
@@ -468,7 +459,7 @@ function buildResidents(): Resident[] {
 
       resident.interestScores = chooseInterestScores(resident);
       resident.campaigns = chooseCampaigns(resident);
-      resident.upsellProducts = buildUpsellProducts(resident);
+      resident.upsellProducts = buildUpsellProducts();
 
       allResidents.push(resident);
       index += 1;

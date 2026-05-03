@@ -13,9 +13,15 @@ export interface Campaign {
   tag: string;
   product: string;
   price: string;
+  priceNumber: number;
   discount: string;
   pitch: string;
   color: string;
+}
+
+export interface UpsellProduct {
+  name: string;
+  price: number;
 }
 
 export interface Resident {
@@ -33,7 +39,7 @@ export interface Resident {
   customerSince?: string;
   interestScores: InterestScores;
   campaigns: Campaign[];
-  upsellProducts: string[];
+  upsellProducts: UpsellProduct[];
 }
 
 // ── Visit outcome ──
