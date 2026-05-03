@@ -20,6 +20,8 @@ export interface SalesCoreOpportunity {
   estimatedAnnualValue: number;
   units: number;
   notes?: string;
+  salesRepName?: string;
+  createdBy?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -34,6 +36,7 @@ export interface CreateOpportunityPayload {
   estimatedAnnualValue: number;
   units: number;
   notes?: string;
+  salesRepName?: string;
 }
 
 export type OfferStatus = 'draft' | 'sent' | 'viewed' | 'accepted' | 'declined' | 'expired';

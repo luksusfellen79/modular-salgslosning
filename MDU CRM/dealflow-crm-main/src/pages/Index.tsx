@@ -24,7 +24,11 @@ function toKanbanOpp(sc: SalesCoreOpportunity): Opportunity {
     value: sc.estimatedAnnualValue,
     stage: sc.stage,
     closeDate: sc.closeDate,
-    owner: { name: 'Sales Core', initials: 'SC', color: 'hsl(225 70% 45%)' },
+    owner: (() => {
+      const n = sc.salesRepName ?? sc.createdBy ?? 'Ukjent';
+      const initials = n.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase();
+      return { name: n, initials, color: 'hsl(225 70% 45%)' };
+    })(),
     probability: STAGE_PROBABILITY[sc.stage] ?? 50,
     units: sc.units,
     description: sc.notes,

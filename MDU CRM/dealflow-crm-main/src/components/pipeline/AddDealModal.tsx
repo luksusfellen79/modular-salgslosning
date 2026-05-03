@@ -14,6 +14,14 @@ const STAGES = [
   { id: 'negotiation', label: 'Forhandling' },
 ];
 
+function getSessionName(): string {
+  try {
+    const raw = localStorage.getItem('salgshub_session');
+    if (!raw) return 'Ukjent';
+    return (JSON.parse(raw) as { name: string }).name ?? 'Ukjent';
+  } catch { return 'Ukjent'; }
+}
+
 export function AddDealModal({ onClose, onCreated }: AddDealModalProps) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,6 +36,7 @@ export function AddDealModal({ onClose, onCreated }: AddDealModalProps) {
     estimatedAnnualValue: 0,
     units: 0,
     notes: '',
+    salesRepName: getSessionName(),
   });
 
   const set = (field: keyof CreateOpportunityPayload, value: string | number) =>

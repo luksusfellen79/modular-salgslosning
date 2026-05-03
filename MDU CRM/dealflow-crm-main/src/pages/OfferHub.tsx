@@ -76,7 +76,11 @@ function toOpportunity(sc: SalesCoreOpportunity): Opportunity {
     value: sc.estimatedAnnualValue,
     closeDate: sc.closeDate,
     probability: 50,
-    owner: { name: 'Sales Core', initials: 'SC', color: '#6366f1' },
+    owner: (() => {
+      const n = sc.salesRepName ?? sc.createdBy ?? 'Ukjent';
+      const initials = n.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase();
+      return { name: n, initials, color: '#6366f1' };
+    })(),
     units: sc.units,
     description: sc.notes,
     createdDate: sc.createdAt,
