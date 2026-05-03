@@ -674,6 +674,14 @@ try {
   }
 } catch { /* ignore */ }
 
+function getSessionName(): string | null {
+  try {
+    const raw = localStorage.getItem('salgshub_session');
+    if (!raw) return null;
+    return (JSON.parse(raw) as { name: string }).name ?? null;
+  } catch { return null; }
+}
+
 export default function App() {
 
   const [screen, setScreen] = useState<Screen>('seller_picker');
@@ -681,6 +689,21 @@ export default function App() {
   const [round, setRound] = useState<Round | null>(null);
   const [selectedUnit, setSelectedUnit] = useState<RoundUnit | null>(null);
   const [visitMap, setVisitMap] = useState<Map<string, VisitStatus>>(new Map());
+
+  // Auto-match Hub session user to a seller on startup
+  useEffect(() => {
+    const sessionName = getSessionName();
+    if (!sessionName) return;
+    fetchSellers().then((sellers) => {
+      const match = sellers.find(
+        (s) => s.name.toLowerCase() === sessionName.toLowerCase()
+      );
+      if (match) {
+        setSeller(match);
+        setScreen('round_picker');
+      }
+    }).catch(() => { /* fall back to seller_picker */ });
+  }, []);
 
   const handleSelectSeller = (s: Seller) => {
     setSeller(s);
