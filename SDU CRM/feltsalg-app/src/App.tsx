@@ -298,15 +298,54 @@ function RoundUnitList({
   );
 }
 
-// ── Campaign Panel ────────────────────────────────────────────────────────────
-function CampaignPanel({
+// ── Step indicator ────────────────────────────────────────────────────────────
+function StepIndicator({ current }: { current: 1 | 2 | 3 }) {
+  const steps = [
+    { n: 1, label: 'Produkter' },
+    { n: 2, label: 'Sammendrag' },
+    { n: 3, label: 'Aksept' },
+  ];
+  return (
+    <div className="flex items-center justify-center gap-0 py-3">
+      {steps.map((step, i) => (
+        <div key={step.n} className="flex items-center">
+          <div className="flex flex-col items-center gap-1">
+            <div
+              className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all"
+              style={{
+                background: step.n < current ? '#E2E8F0' : step.n === current ? '#005A8E' : '#F1F5F9',
+                color:      step.n < current ? '#94A3B8'  : step.n === current ? '#fff'     : '#CBD5E1',
+              }}
+            >
+              {step.n < current ? '✓' : step.n}
+            </div>
+            <span
+              className="text-[9px] font-semibold w-14 text-center"
+              style={{ color: step.n === current ? '#005A8E' : '#9CA3AF' }}
+            >
+              {step.label}
+            </span>
+          </div>
+          {i < steps.length - 1 && (
+            <div className="w-10 h-px bg-gray-200 mb-4 mx-1" />
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Product Builder (Steg 1) ──────────────────────────────────────────────────
+function ProductBuilder({
   campaigns,
   resident,
-  onOutcome,
+  onNext,
+  onQuickOutcome,
 }: {
   campaigns: Campaign[];
   resident: Resident;
-  onOutcome: (outcome: VisitOutcome, campaign: Campaign, extraProducts: string[]) => void;
+  onNext: (campaign: Campaign, extras: UpsellProduct[]) => void;
+  onQuickOutcome: (outcome: VisitOutcome, campaign: Campaign) => void;
 }) {
   const [activeIdx, setActiveIdx] = useState(0);
   const [extraSel, setExtraSel] = useState<UpsellProduct[]>([]);
@@ -320,193 +359,279 @@ function CampaignPanel({
   const totalCount = 1 + extraSel.length;
   const extraTotal = extraSel.reduce((sum, p) => sum + p.price, 0);
   const grandTotal = camp.priceNumber + extraTotal;
-  const formatKr = (n: number) => n.toLocaleString('nb-NO') + ' kr/md';
+  const fmt = (n: number) => n.toLocaleString('nb-NO') + ' kr/md';
 
   return (
-    <div>
-      {/* Campaign tabs — only shown when there are multiple */}
+    <div className="p-4 space-y-3 pb-8">
+      {/* Campaign tabs */}
       {campaigns.length > 1 && (
-        <>
-          <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">
-            Kampanjer ({campaigns.length})
-          </div>
-          <div className="flex gap-1.5 mb-3">
-            {campaigns.map((c, i) => (
-              <button
-                key={c.id}
-                onClick={() => { setActiveIdx(i); setExtraSel([]); }}
-                className="flex-1 py-1.5 rounded-lg text-[11px] font-semibold transition-all"
-                style={{
-                  background: activeIdx === i ? camp.color : '#F3F4F6',
-                  color: activeIdx === i ? '#fff' : '#6B7280',
-                }}
-              >
-                {c.tag}
-              </button>
-            ))}
-          </div>
-        </>
+        <div className="flex gap-1.5">
+          {campaigns.map((c, i) => (
+            <button
+              key={c.id}
+              onClick={() => { setActiveIdx(i); setExtraSel([]); }}
+              className="flex-1 py-2 rounded-xl text-xs font-semibold transition-all"
+              style={{ background: activeIdx === i ? c.color : '#F3F4F6', color: activeIdx === i ? '#fff' : '#6B7280' }}
+            >
+              {c.tag}
+            </button>
+          ))}
+        </div>
       )}
 
-      <div
-        className="rounded-xl p-4 mb-3"
-        style={{ background: '#EFF8FF', border: `1.5px solid ${camp.color}40` }}
-      >
-        {/* Header */}
-        <div className="flex items-start justify-between mb-2">
+      {/* Campaign pitch */}
+      <div className="bg-white rounded-xl p-4 border border-gray-100">
+        <div className="flex items-start justify-between mb-1.5">
           <div className="font-bold text-sm text-gray-900">{camp.name}</div>
-          <span
-            className="text-[10px] font-bold px-2 py-0.5 rounded-full ml-2 shrink-0"
-            style={{ color: camp.color, background: '#fff' }}
-          >
-            {camp.tag}
-          </span>
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full ml-2 shrink-0"
+            style={{ color: camp.color, background: camp.color + '18' }}>{camp.tag}</span>
+        </div>
+        <p className="text-xs text-gray-500 leading-relaxed">{camp.pitch}</p>
+      </div>
+
+      {/* Product list */}
+      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+        <div className="px-4 py-2.5 border-b border-gray-50">
+          <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Bygg ordren</div>
         </div>
 
-        <p className="text-xs text-gray-600 leading-relaxed mb-3">{camp.pitch}</p>
-
-        {/* ── Produktvalg ── */}
-        <div className="bg-white rounded-xl mb-3 overflow-hidden" style={{ border: `1.5px solid ${camp.color}30` }}>
-          <div className="px-3 pt-3 pb-2">
-            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Valgte produkter</div>
-
-            {/* Main campaign product — alltid inkludert */}
-            <div className="flex items-center justify-between py-2 border-b border-gray-100">
-              <div className="flex items-center gap-2.5">
-                <div
-                  className="w-5 h-5 rounded-full flex items-center justify-center shrink-0"
-                  style={{ background: camp.color }}
-                >
-                  <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
-                    <path d="M20 6L9 17l-5-5" />
-                  </svg>
-                </div>
-                <div>
-                  <div className="font-semibold text-sm text-gray-900 leading-tight">{camp.product}</div>
-                  {camp.discount !== '—' && (
-                    <div className="text-[10px] text-gray-400 mt-0.5">Rabatt: -{camp.discount}</div>
-                  )}
-                </div>
-              </div>
-              <div className="font-bold text-sm shrink-0 ml-2" style={{ color: camp.color }}>{camp.price}</div>
+        {/* Main product — alltid inkludert */}
+        <div className="flex items-center justify-between px-4 py-3.5 border-b border-gray-50">
+          <div className="flex items-center gap-3">
+            <div className="w-6 h-6 rounded-full flex items-center justify-center shrink-0" style={{ background: camp.color }}>
+              <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}><path d="M20 6L9 17l-5-5"/></svg>
             </div>
+            <div>
+              <div className="font-semibold text-sm text-gray-900">{camp.product}</div>
+              <div className="text-[10px] text-gray-400">Kampanjepris</div>
+            </div>
+          </div>
+          <div className="font-bold text-sm shrink-0" style={{ color: camp.color }}>{camp.price}</div>
+        </div>
 
-            {/* Ekstra / upsell */}
-            {resident.upsellProducts.length > 0 && (
-              <div className="mt-2 space-y-1.5">
-                <div className="text-[10px] font-medium text-gray-400">Legg til tillegg:</div>
-                {resident.upsellProducts.map((p) => {
-                  const selected = extraSel.some((x) => x.name === p.name);
-                  return (
-                    <button
-                      key={p.name}
-                      onClick={() => toggleExtra(p)}
-                      className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm font-medium transition-all text-left"
-                      style={{
-                        background: selected ? '#E6F7FF' : '#F9FAFB',
-                        border: `1.5px solid ${selected ? '#01ACFB' : '#E5E7EB'}`,
-                        color: selected ? '#005A8E' : '#374151',
-                      }}
-                    >
-                      <div
-                        className="w-5 h-5 rounded-full flex items-center justify-center shrink-0 transition-all"
-                        style={{
-                          background: selected ? '#01ACFB' : '#fff',
-                          border: `1.5px solid ${selected ? '#01ACFB' : '#D1D5DB'}`,
-                        }}
-                      >
-                        {selected && (
-                          <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
-                            <path d="M20 6L9 17l-5-5" />
-                          </svg>
-                        )}
-                      </div>
-                      <span className="flex-1">{p.name}</span>
-                      <span className="text-xs font-semibold shrink-0" style={{ color: selected ? '#005A8E' : '#9CA3AF' }}>
-                        +{p.price.toLocaleString('nb-NO')} kr/md
-                      </span>
-                    </button>
-                  );
-                })}
+        {/* Upsell-produkter */}
+        {resident.upsellProducts.map((p, i) => {
+          const selected = extraSel.some((x) => x.name === p.name);
+          return (
+            <button
+              key={p.name}
+              onClick={() => toggleExtra(p)}
+              className={`w-full flex items-center justify-between px-4 py-3.5 text-left active:bg-gray-50 transition-colors ${i < resident.upsellProducts.length - 1 ? 'border-b border-gray-50' : ''}`}
+              style={{ background: selected ? '#F0FDF4' : 'white' }}
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-6 h-6 rounded-full flex items-center justify-center shrink-0 transition-all"
+                  style={{ background: selected ? '#00A650' : 'white', border: `2px solid ${selected ? '#00A650' : '#D1D5DB'}` }}>
+                  {selected && <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}><path d="M20 6L9 17l-5-5"/></svg>}
+                </div>
+                <span className="font-medium text-sm" style={{ color: selected ? '#166534' : '#374151' }}>{p.name}</span>
               </div>
+              <span className="font-semibold text-sm shrink-0" style={{ color: selected ? '#00A650' : '#9CA3AF' }}>
+                +{p.price.toLocaleString('nb-NO')} kr/md
+              </span>
+            </button>
+          );
+        })}
+
+        {/* Total */}
+        <div className="flex items-center justify-between px-4 py-3" style={{ background: camp.color + '0E', borderTop: `1.5px solid ${camp.color}25` }}>
+          <div>
+            <div className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
+              {totalCount === 1 ? '1 produkt valgt' : `${totalCount} produkter valgt`}
+            </div>
+            <div className="text-[10px] text-gray-400 mt-0.5 max-w-[170px] truncate">
+              {[camp.product, ...extraSel.map(p => p.name)].join(' · ')}
+            </div>
+          </div>
+          <div className="text-right shrink-0 ml-2">
+            <div className="font-bold text-lg" style={{ color: camp.color }}>{fmt(grandTotal)}</div>
+            {extraSel.length > 0 && (
+              <div className="text-[10px] text-gray-400">{fmt(camp.priceNumber)} + {fmt(extraTotal)}</div>
             )}
           </div>
+        </div>
+      </div>
 
-          {/* Sum-boks */}
-          <div
-            className="px-3 py-2.5 mt-1 flex items-center justify-between"
-            style={{ background: `${camp.color}12`, borderTop: `1px solid ${camp.color}25` }}
-          >
-            <div>
-              <div className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
-                {totalCount === 1 ? '1 produkt valgt' : `${totalCount} produkter valgt`}
-              </div>
-              <div className="text-[10px] text-gray-400 mt-0.5">
-                {[camp.product, ...extraSel.map((p) => p.name)].join(' · ')}
-              </div>
-            </div>
-            <div className="text-right shrink-0 ml-3">
-              <div className="font-bold text-lg leading-tight" style={{ color: camp.color }}>
-                {formatKr(grandTotal)}
-              </div>
-              {extraSel.length > 0 && (
-                <div className="text-[10px] text-gray-400">
-                  {formatKr(camp.priceNumber)} + {formatKr(extraTotal)}
+      {/* Primær CTA */}
+      <button
+        onClick={() => onNext(camp, extraSel)}
+        className="w-full py-4 rounded-2xl text-white font-bold text-base flex items-center justify-center gap-2 active:scale-[0.98] transition-all shadow-sm"
+        style={{ background: '#005A8E' }}
+      >
+        Se sammendrag
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}><path d="M9 18l6-6-6-6"/></svg>
+      </button>
+
+      {/* Andre utfall */}
+      <div>
+        <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest text-center mb-2.5">Ikke interessert i salg?</div>
+        <div className="grid grid-cols-2 gap-2">
+          <button onClick={() => onQuickOutcome('no_answer', camp)}
+            className="py-2.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 bg-amber-50 text-amber-700 border border-amber-200 active:scale-[0.97] transition-all">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}><circle cx={12} cy={12} r={10}/><path d="M12 6v6l4 2"/></svg>
+            Ikke hjemme
+          </button>
+          <button onClick={() => onQuickOutcome('followup', camp)}
+            className="py-2.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 bg-blue-50 text-blue-700 border border-blue-200 active:scale-[0.97] transition-all">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}><rect x={3} y={4} width={18} height={18} rx={2}/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+            Avtal oppfølging
+          </button>
+          <button onClick={() => onQuickOutcome('rejected', camp)}
+            className="py-2.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 bg-red-50 text-red-600 border border-red-100 active:scale-[0.97] transition-all">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}><path d="M18 6L6 18M6 6l12 12"/></svg>
+            Ikke interessert
+          </button>
+          <button onClick={() => onQuickOutcome('marketing', camp)}
+            className="py-2.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 bg-purple-50 text-purple-700 border border-purple-200 active:scale-[0.97] transition-all">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+            Marketing
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Order Summary (Steg 2) ────────────────────────────────────────────────────
+function OrderSummary({
+  unit,
+  campaign,
+  extras,
+  onNext,
+  onBack,
+}: {
+  unit: RoundUnit;
+  campaign: Campaign;
+  extras: UpsellProduct[];
+  onNext: () => void;
+  onBack: () => void;
+}) {
+  const grandTotal = campaign.priceNumber + extras.reduce((s, p) => s + p.price, 0);
+  const fmt = (n: number) => n.toLocaleString('nb-NO') + ' kr/md';
+
+  return (
+    <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <StepIndicator current={2} />
+
+      {/* Kunde */}
+      <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
+        <div className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-1">Kunde</div>
+        <div className="font-bold text-base text-[#005A8E]">{unit.residentName ?? 'Ukjent beboer'}</div>
+        <div className="text-sm text-blue-400 mt-0.5">{unit.address}</div>
+      </div>
+
+      {/* Ordrelinjer */}
+      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+        <div className="px-4 py-2.5 border-b border-gray-50">
+          <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Ordrelinjer</div>
+        </div>
+        <div className="flex items-center justify-between px-4 py-3.5 border-b border-gray-50">
+          <span className="text-sm font-medium text-gray-700">{campaign.product}</span>
+          <span className="text-sm font-bold text-gray-900">{fmt(campaign.priceNumber)}</span>
+        </div>
+        {extras.map((p) => (
+          <div key={p.name} className="flex items-center justify-between px-4 py-3.5 border-b border-gray-50">
+            <span className="text-sm font-medium text-gray-700">{p.name}</span>
+            <span className="text-sm font-bold text-gray-900">{fmt(p.price)}</span>
+          </div>
+        ))}
+        <div className="flex items-center justify-between px-4 py-4 bg-slate-50">
+          <span className="text-sm font-bold text-gray-900">Total per måned</span>
+          <span className="text-xl font-bold text-[#005A8E]">{fmt(grandTotal)}</span>
+        </div>
+      </div>
+
+      <button
+        onClick={onNext}
+        className="w-full py-4 rounded-2xl text-white font-bold text-base flex items-center justify-center gap-2 active:scale-[0.98] transition-all shadow-sm"
+        style={{ background: '#005A8E' }}
+      >
+        Presenter for kunde
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}><path d="M9 18l6-6-6-6"/></svg>
+      </button>
+      <button onClick={onBack} className="w-full py-2 text-sm font-medium text-gray-400 text-center">
+        ← Endre ordre
+      </button>
+    </div>
+  );
+}
+
+// ── Customer Accept (Steg 3) ──────────────────────────────────────────────────
+function CustomerAccept({
+  unit,
+  campaign,
+  extras,
+  logging,
+  onAccept,
+  onDecline,
+}: {
+  unit: RoundUnit;
+  campaign: Campaign;
+  extras: UpsellProduct[];
+  logging: boolean;
+  onAccept: () => void;
+  onDecline: () => void;
+}) {
+  const grandTotal = campaign.priceNumber + extras.reduce((s, p) => s + p.price, 0);
+  const fmt = (n: number) => n.toLocaleString('nb-NO') + ' kr/md';
+  const allProducts = [{ name: campaign.product, price: campaign.priceNumber }, ...extras];
+
+  return (
+    <div className="flex-1 flex flex-col overflow-y-auto">
+      {/* Grønt toppar — kundevendt */}
+      <div className="bg-[#00A650] px-6 pt-10 pb-8 text-center">
+        <div className="text-5xl mb-4">🤝</div>
+        <div className="text-2xl font-bold text-white mb-2">Ditt nye abonnement</div>
+        <div className="text-sm text-white/70">Ingen bindingstid · Si opp når som helst</div>
+      </div>
+
+      <div className="p-5 flex flex-col gap-4">
+        <div className="text-center">
+          <div className="text-lg font-bold text-gray-900">{unit.residentName ?? 'Kjære kunde'}</div>
+          <div className="text-sm text-gray-500">{unit.address}</div>
+        </div>
+
+        {/* Produkter */}
+        <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
+          {allProducts.map((p, i) => (
+            <div key={p.name} className="flex items-center justify-between px-5 py-4"
+              style={{ borderBottom: i < allProducts.length - 1 ? '1px solid #F3F4F6' : 'none' }}>
+              <div className="flex items-center gap-3">
+                <div className="w-7 h-7 rounded-full bg-green-100 flex items-center justify-center">
+                  <svg className="w-3.5 h-3.5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}><path d="M20 6L9 17l-5-5"/></svg>
                 </div>
-              )}
+                <span className="font-semibold text-gray-900">{p.name}</span>
+              </div>
+              <span className="font-bold text-gray-700">{fmt(p.price)}</span>
             </div>
+          ))}
+          <div className="flex items-center justify-between px-5 py-4 bg-gray-50 border-t border-gray-100">
+            <span className="font-bold text-gray-900">Du betaler totalt</span>
+            <span className="text-xl font-bold text-[#005A8E]">{fmt(grandTotal)}</span>
           </div>
         </div>
 
-        {/* Solgt / Nei-knapper */}
-        <div className="flex gap-2">
-          <button
-            onClick={() => onOutcome('sold', camp, extraSel.map((p) => p.name))}
-            className="flex-1 py-3 rounded-xl text-white text-sm font-bold flex items-center justify-center gap-1.5 active:scale-[0.97] transition-all"
-            style={{ background: '#00A650' }}
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
-              <path d="M20 6L9 17l-5-5" />
-            </svg>
-            {totalCount > 1 ? `Solgt (${totalCount} prod.)` : 'Solgt!'}
-          </button>
-          <button
-            onClick={() => onOutcome('rejected', camp, [])}
-            className="flex-1 py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-1.5 active:scale-[0.97] transition-all"
-            style={{ background: '#FDECEA', color: '#E5202E', border: '1px solid #E5202E30' }}
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
-              <path d="M18 6L6 18M6 6l12 12" />
-            </svg>
-            Nei takk
-          </button>
-        </div>
-      </div>
+        {/* Aksept-knapp — kunden trykker selv */}
+        <button
+          onClick={onAccept}
+          disabled={logging}
+          className="w-full py-5 rounded-2xl text-white text-lg font-bold flex items-center justify-center gap-2 active:scale-[0.98] transition-all disabled:opacity-60 shadow-sm"
+          style={{ background: '#00A650' }}
+        >
+          {logging
+            ? <><svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z"/></svg>Registrerer…</>
+            : <><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}><path d="M20 6L9 17l-5-5"/></svg>Jeg godtar dette tilbudet</>
+          }
+        </button>
 
-      {/* Andre utfall */}
-      <div className="grid grid-cols-2 gap-2">
         <button
-          onClick={() => onOutcome('no_answer', camp, [])}
-          className="py-2.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 bg-amber-50 text-amber-700 border border-amber-200 active:scale-[0.97] transition-all"
+          onClick={onDecline}
+          disabled={logging}
+          className="w-full py-3.5 rounded-2xl text-sm font-semibold text-red-500 bg-red-50 border border-red-100 active:scale-[0.97] transition-all disabled:opacity-60"
         >
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}><circle cx={12} cy={12} r={10} /><path d="M12 6v6l4 2" /></svg>
-          Ikke hjemme
-        </button>
-        <button
-          onClick={() => onOutcome('followup', camp, [])}
-          className="py-2.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 bg-blue-50 text-blue-700 border border-blue-200 active:scale-[0.97] transition-all"
-        >
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}><rect x={3} y={4} width={18} height={18} rx={2} /><path d="M16 2v4M8 2v4M3 10h18" /></svg>
-          Avtal oppfølging
+          Nei takk
         </button>
       </div>
-      <button
-        onClick={() => onOutcome('marketing', camp, [])}
-        className="mt-2 w-full py-2.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 bg-purple-50 text-purple-700 border border-purple-200 active:scale-[0.97] transition-all"
-      >
-        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}><path d="M22 12h-4l-3 9L9 3l-3 9H2" /></svg>
-        Legg i marketing-kampanje
-      </button>
     </div>
   );
 }
@@ -531,6 +656,9 @@ function ResidentDetail({
   const [loadingResident, setLoadingResident] = useState(true);
   const [logging, setLogging] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const [orderStep, setOrderStep] = useState<'select' | 'summary' | 'accept'>('select');
+  const [pendingCampaign, setPendingCampaign] = useState<Campaign | null>(null);
+  const [pendingExtras, setPendingExtras] = useState<UpsellProduct[]>([]);
 
   useEffect(() => {
     fetchResidents(unit.buildingId)
@@ -554,7 +682,7 @@ function ResidentDetail({
       try {
         const soldProducts = outcome === 'sold' ? [campaign.product, ...extraProducts] : [];
 
-        // 1. Log outcome to KAS Core (creates/updates customer)
+        // 1. Log outcome to KAS Core
         await logSDUOutcome({
           outcome,
           unitId: resident.unitId,
@@ -589,14 +717,44 @@ function ResidentDetail({
           marketing: 'Lagt til i marketing',
         };
         showToast(labels[outcome]);
+        setTimeout(() => onBack(), outcome === 'sold' ? 1800 : 1200);
       } catch {
         showToast('❌ Kunne ikke logge besøk');
-      } finally {
         setLogging(false);
       }
     },
-    [logging, resident, round, unit, seller, onVisitLogged]
+    [logging, resident, round, unit, seller, onVisitLogged, onBack]
   );
+
+  // Step transition handlers
+  const handleBuilderNext = (campaign: Campaign, extras: UpsellProduct[]) => {
+    setPendingCampaign(campaign);
+    setPendingExtras(extras);
+    setOrderStep('summary');
+  };
+
+  const handleSummaryNext = () => setOrderStep('accept');
+  const handleSummaryBack = () => setOrderStep('select');
+
+  const handleCustomerAccept = () => {
+    if (!pendingCampaign) return;
+    handleOutcome('sold', pendingCampaign, pendingExtras.map(p => p.name));
+  };
+
+  const handleCustomerDecline = () => {
+    if (!pendingCampaign) return;
+    handleOutcome('rejected', pendingCampaign, []);
+  };
+
+  const handleQuickOutcome = (outcome: VisitOutcome, campaign: Campaign) => {
+    handleOutcome(outcome, campaign, []);
+  };
+
+  const handleBackButton = () => {
+    if (orderStep === 'accept') setOrderStep('summary');
+    else if (orderStep === 'summary') setOrderStep('select');
+    else onBack();
+  };
 
   const scores = [
     { key: 'internett' as const, label: 'Internett' },
@@ -613,37 +771,40 @@ function ResidentDetail({
         </div>
       )}
 
-      <div className="bg-[#005A8E] px-4 pt-4 pb-5">
-        <button
-          onClick={onBack}
-          className="flex items-center gap-1.5 text-white/70 text-sm mb-4 hover:text-white transition-colors"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}><path d="M19 12H5M12 5l-7 7 7 7" /></svg>
-          Tilbake
-        </button>
-        <div className="flex items-start justify-between">
-          <div>
-            <div className="text-white font-bold text-xl">{unit.residentName ?? 'Ukjent beboer'}</div>
-            <div className="text-white/50 text-sm mt-0.5">{unit.address}</div>
-            {resident?.phone && (
-              <a href={`tel:${resident.phone}`} className="text-telenor-blue text-sm mt-1 flex items-center gap-1">
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 014.07 6.82 2 2 0 016 4.68h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L10.09 12a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 18.92z" /></svg>
-                {resident.phone}
-              </a>
+      {/* Blue header — hidden on accept screen (CustomerAccept has its own green header) */}
+      {orderStep !== 'accept' && (
+        <div className="bg-[#005A8E] px-4 pt-4 pb-5">
+          <button
+            onClick={handleBackButton}
+            className="flex items-center gap-1.5 text-white/70 text-sm mb-4 hover:text-white transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}><path d="M19 12H5M12 5l-7 7 7 7" /></svg>
+            {orderStep === 'summary' ? 'Endre ordre' : 'Tilbake'}
+          </button>
+          <div className="flex items-start justify-between">
+            <div>
+              <div className="text-white font-bold text-xl">{unit.residentName ?? 'Ukjent beboer'}</div>
+              <div className="text-white/50 text-sm mt-0.5">{unit.address}</div>
+              {resident?.phone && (
+                <a href={`tel:${resident.phone}`} className="text-telenor-blue text-sm mt-1 flex items-center gap-1">
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 014.07 6.82 2 2 0 016 4.68h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L10.09 12a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 18.92z" /></svg>
+                  {resident.phone}
+                </a>
+              )}
+            </div>
+            {visitStatus && (
+              <span
+                className="text-xs font-bold px-2.5 py-1 rounded-full shrink-0"
+                style={{ color: STATUS_CONFIG[visitStatus.outcome].color, background: STATUS_CONFIG[visitStatus.outcome].bg }}
+              >
+                {STATUS_CONFIG[visitStatus.outcome].label}
+              </span>
             )}
           </div>
-          {visitStatus && (
-            <span
-              className="text-xs font-bold px-2.5 py-1 rounded-full shrink-0"
-              style={{ color: STATUS_CONFIG[visitStatus.outcome].color, background: STATUS_CONFIG[visitStatus.outcome].bg }}
-            >
-              {STATUS_CONFIG[visitStatus.outcome].label}
-            </span>
-          )}
         </div>
-      </div>
+      )}
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 flex flex-col overflow-y-auto">
         {loadingResident ? (
           <div className="flex items-center justify-center py-12 text-gray-400 gap-2">
             <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -653,72 +814,89 @@ function ResidentDetail({
             <span className="text-sm">Henter kundedata fra KAS Core…</span>
           </div>
         ) : !resident ? (
-          <div className="bg-white rounded-xl p-4 border border-gray-100 text-sm text-gray-500 text-center">
+          <div className="bg-white rounded-xl p-4 border border-gray-100 m-4 text-sm text-gray-500 text-center">
             Fant ikke beboerdata i KAS Core for denne enheten.
           </div>
+        ) : orderStep === 'accept' && pendingCampaign ? (
+          /* ── Steg 3: Kundeaksept (snudd skjerm) ── */
+          <CustomerAccept
+            unit={unit}
+            campaign={pendingCampaign}
+            extras={pendingExtras}
+            logging={logging}
+            onAccept={handleCustomerAccept}
+            onDecline={handleCustomerDecline}
+          />
+        ) : orderStep === 'summary' && pendingCampaign ? (
+          /* ── Steg 2: Ordresammendrag (selger) ── */
+          <OrderSummary
+            unit={unit}
+            campaign={pendingCampaign}
+            extras={pendingExtras}
+            onNext={handleSummaryNext}
+            onBack={handleSummaryBack}
+          />
         ) : (
+          /* ── Steg 1: Produktvelger ── */
           <>
-            {/* Interest scores */}
-            <div className="bg-white rounded-xl p-4 border border-gray-100">
-              <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Interessescore</div>
-              <div className="grid grid-cols-4 gap-2">
-                {scores.map(({ key, label }) => (
-                  <ScoreRing key={key} score={resident.interestScores[key]} label={label} />
-                ))}
-              </div>
-            </div>
-
-            {/* Existing products */}
-            {resident.existingProducts.length > 0 && (
+            {/* Customer intel */}
+            <div className="p-4 space-y-4">
               <div className="bg-white rounded-xl p-4 border border-gray-100">
-                <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Aktive produkter</div>
-                <div className="flex flex-wrap gap-1.5">
-                  {resident.existingProducts.map((p) => (
-                    <span key={p} className="bg-blue-50 text-blue-700 text-xs font-semibold px-2.5 py-1 rounded-full">{p}</span>
+                <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Interessescore</div>
+                <div className="grid grid-cols-4 gap-2">
+                  {scores.map(({ key, label }) => (
+                    <ScoreRing key={key} score={resident.interestScores[key]} label={label} />
                   ))}
                 </div>
               </div>
-            )}
 
-            {/* Previous products */}
-            {resident.previousProducts.length > 0 && (
-              <div className="bg-white rounded-xl p-4 border border-gray-100">
-                <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Tidligere produkter</div>
-                <div className="flex flex-wrap gap-1.5 mb-2">
-                  {resident.previousProducts.map((p) => (
-                    <span key={p} className="bg-gray-100 text-gray-500 text-xs font-semibold px-2.5 py-1 rounded-full">{p}</span>
-                  ))}
-                </div>
-                {resident.cancelReason && (
-                  <div className="flex items-center gap-1.5 text-xs text-red-500 mt-1">
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}><circle cx={12} cy={12} r={10} /><path d="M12 8v4M12 16h.01" /></svg>
-                    Avslutningsgrunn: {resident.cancelReason}
+              {resident.existingProducts.length > 0 && (
+                <div className="bg-white rounded-xl p-4 border border-gray-100">
+                  <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Aktive produkter</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {resident.existingProducts.map((p) => (
+                      <span key={p} className="bg-blue-50 text-blue-700 text-xs font-semibold px-2.5 py-1 rounded-full">{p}</span>
+                    ))}
                   </div>
-                )}
-              </div>
-            )}
-
-            {/* Campaigns */}
-            <div className="bg-white rounded-xl p-4 border border-gray-100">
-              {logging && (
-                <div className="flex items-center gap-2 text-sm text-gray-500 mb-3">
-                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z" />
-                  </svg>
-                  Logger besøk…
                 </div>
               )}
-              {resident.campaigns.length > 0 ? (
-                <CampaignPanel
+
+              {resident.previousProducts.length > 0 && (
+                <div className="bg-white rounded-xl p-4 border border-gray-100">
+                  <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Tidligere produkter</div>
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {resident.previousProducts.map((p) => (
+                      <span key={p} className="bg-gray-100 text-gray-500 text-xs font-semibold px-2.5 py-1 rounded-full">{p}</span>
+                    ))}
+                  </div>
+                  {resident.cancelReason && (
+                    <div className="flex items-center gap-1.5 text-xs text-red-500 mt-1">
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}><circle cx={12} cy={12} r={10} /><path d="M12 8v4M12 16h.01" /></svg>
+                      Avslutningsgrunn: {resident.cancelReason}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Product Builder */}
+            {resident.campaigns.length > 0 ? (
+              <div className="px-0">
+                <StepIndicator current={1} />
+                <ProductBuilder
                   campaigns={resident.campaigns}
                   resident={resident}
-                  onOutcome={handleOutcome}
+                  onNext={handleBuilderNext}
+                  onQuickOutcome={handleQuickOutcome}
                 />
-              ) : (
-                <div className="text-sm text-gray-400 text-center py-4">Ingen kampanjer tilgjengelig</div>
-              )}
-            </div>
+              </div>
+            ) : (
+              <div className="px-4 pb-8">
+                <div className="bg-white rounded-xl p-4 border border-gray-100 text-sm text-gray-400 text-center">
+                  Ingen kampanjer tilgjengelig
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>
