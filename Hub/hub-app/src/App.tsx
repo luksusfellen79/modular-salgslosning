@@ -203,8 +203,8 @@ function LoginPage({ onLogin }: { onLogin: (user: HubUser) => void }) {
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 function appUrl(baseUrl: string, user: HubUser): string {
-  const token = btoa(JSON.stringify(user));
-  return `${baseUrl}?hub_session=${encodeURIComponent(token)}`;
+  const token = encodeURIComponent(JSON.stringify(user));
+  return `${baseUrl}?hub_session=${token}`;
 }
 
 function Dashboard({ user, stats, onAdmin, onLogout }: { user: HubUser; stats: SalesStats | null; onAdmin: () => void; onLogout: () => void }) {

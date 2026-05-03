@@ -895,7 +895,7 @@ function bootstrapSession(requiredPermission: string): boolean {
     const params = new URLSearchParams(window.location.search);
     const token = params.get('hub_session');
     if (token) {
-      const user = JSON.parse(atob(token)) as { permissions: string[] };
+      const user = JSON.parse(decodeURIComponent(token)) as { permissions: string[] };
       localStorage.setItem('salgshub_session', JSON.stringify(user));
       window.history.replaceState({}, '', window.location.pathname);
     }
