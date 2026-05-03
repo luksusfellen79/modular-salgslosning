@@ -697,7 +697,7 @@ try {
   const params = new URLSearchParams(window.location.search);
   const token = params.get('hub_session');
   if (token) {
-    localStorage.setItem('salgshub_session', decodeURIComponent(token));
+    localStorage.setItem('salgshub_session', token);
     window.history.replaceState({}, '', window.location.pathname);
   }
 } catch { /* ignore */ }
