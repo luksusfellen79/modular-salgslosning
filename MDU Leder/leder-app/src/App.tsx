@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Toaster } from "@/components/ui/toaster";
+import { SidekickProvider } from "@/contexts/SidekickContext";
 import WarRoom from "./pages/WarRoom";
 import Forecast from "./pages/Forecast";
 import Reports from "./pages/Reports";
@@ -19,14 +20,16 @@ try {
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <Toaster />
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<WarRoom />} />
-        <Route path="/forecast" element={<Forecast />} />
-        <Route path="/reports" element={<Reports />} />
-      </Routes>
-    </BrowserRouter>
+    <SidekickProvider>
+      <Toaster />
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<WarRoom />} />
+          <Route path="/forecast" element={<Forecast />} />
+          <Route path="/reports" element={<Reports />} />
+        </Routes>
+      </BrowserRouter>
+    </SidekickProvider>
   </QueryClientProvider>
 );
 

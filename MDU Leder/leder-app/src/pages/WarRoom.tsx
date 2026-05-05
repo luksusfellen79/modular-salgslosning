@@ -8,6 +8,7 @@ import {
   SalesCoreOffer,
   WarRoomStatus,
 } from '@/lib/salesCore';
+import { useSidekickData } from '@/contexts/SidekickContext';
 import { Shield, ShieldCheck, ShieldX, Loader2, CheckCircle2, XCircle, ChevronDown, ChevronUp, Eye } from 'lucide-react';
 
 const formatCurrency = (v: number) =>
@@ -36,6 +37,7 @@ export default function WarRoom() {
   const [actions, setActions] = useState<Record<string, ActionState>>({});
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const { setSidekickData } = useSidekickData();
 
   const load = useCallback(() => {
     setLoading(true);
@@ -52,10 +54,34 @@ export default function WarRoom() {
           map.set(o.opportunityId, arr);
         });
         setOffersMap(map);
+
+        // Feed live pipeline data into the AI Sidekick context
+        const stageCounts: Record<string, number> = {};
+        let totalValue = 0;
+        for (const opp of opps) {
+          stageCounts[opp.stage] = (stageCounts[opp.stage] ?? 0) + 1;
+          totalValue += opp.estimatedAnnualValue ?? 0;
+        }
+        setSidekickData({
+          kilde: 'WarRoom – live pipeline',
+          totaltAntallDeals: opps.length,
+          totalEstimertArsverdi: totalValue,
+          fasefordeling: stageCounts,
+          deals: opps.map((o) => ({
+            navn: o.accountName,
+            kontakt: o.contactName,
+            fase: o.stage,
+            enheter: o.units,
+            arsverdi: o.estimatedAnnualValue,
+            lukkedato: o.closeDate,
+            selger: o.salesRepName,
+            warRoom: o.warRoomStatus,
+          })),
+        });
       })
       .catch(() => setDeals([]))
       .finally(() => setLoading(false));
-  }, []);
+  }, [setSidekickData]);
 
   useEffect(() => { load(); }, [load]);
 

@@ -1,5 +1,6 @@
 import { AppSidebar } from './AppSidebar';
 import { Sidekick } from '@/components/Sidekick';
+import { useSidekickData } from '@/contexts/SidekickContext';
 
 function getSessionUser(): { name: string; role: string } {
   try {
@@ -14,6 +15,7 @@ function getSessionUser(): { name: string; role: string } {
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const user = getSessionUser();
+  const { sidekickData } = useSidekickData();
   const initials = user.name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
 
   return (
@@ -35,7 +37,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         </header>
         <main className="flex-1 overflow-auto">{children}</main>
       </div>
-      <Sidekick mode="leder" />
+      <Sidekick mode="leder" context={sidekickData} />
     </div>
   );
 }
