@@ -30,7 +30,7 @@ export interface Resident {
 }
 
 export async function fetchResidentsForBuilding(buildingId: string): Promise<Resident[]> {
-  const res = await fetch(`${KAS_CORE_URL}/residents/${buildingId}`);
+  const res = await fetch(`${KAS_CORE_URL}/buildings/${buildingId}/residents/full`);
   if (!res.ok) throw new Error(`KAS Core error: ${res.status}`);
   return res.json() as Promise<Resident[]>;
 }
