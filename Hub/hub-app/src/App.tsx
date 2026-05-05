@@ -582,6 +582,236 @@ function UserModal({ mode, userId, initialData, currentUserId, onClose, onSaved 
 const AI_CORE_URL  = (import.meta.env.VITE_AI_CORE_URL   as string | undefined) ?? 'http://localhost:3000';
 const SALES_CORE_URL = (import.meta.env.VITE_SALES_CORE_URL as string | undefined) ?? 'http://localhost:3005';
 
+// Extract product category from name (first word: "Internett", "Mobil", "TV", etc.)
+function productCategory(name: string): string {
+  return name?.split(' ')[0]?.toLowerCase() ?? 'ukjent';
+}
+
+interface NBAOutcome {
+  unitId: string;
+  buildingId: string;
+  recommendedProduct: string;
+  recommendedCampaign: string;
+  actualOutcome: string;
+  actualProducts: string[];
+  hitRecommendation: boolean;
+  loggedAt: string;
+}
+
+interface NBAStats {
+  total: number;
+  exactHits: number;
+  nearHits: number;
+  differentSales: number;
+  noSale: number;
+  followup: number;
+  hitRate: number;
+  conversionRate: number;
+  topRecommended: Array<{ product: string; count: number; hitRate: number }>;
+  topSold: Array<{ product: string; count: number }>;
+  divergent: Array<{ recommended: string; sold: string; count: number }>;
+}
+
+function computeNBAStats(outcomes: NBAOutcome[]): NBAStats {
+  const total = outcomes.length;
+  const exactHits = outcomes.filter(o => o.hitRecommendation).length;
+
+  const soldButDifferent = outcomes.filter(
+    o => o.actualOutcome === 'sold' && !o.hitRecommendation
+  );
+  const nearHits = soldButDifferent.filter(o =>
+    o.actualProducts.some(p => productCategory(p) === productCategory(o.recommendedProduct))
+  ).length;
+  const differentSales = soldButDifferent.length - nearHits;
+
+  const noSale = outcomes.filter(o => o.actualOutcome === 'rejected' || o.actualOutcome === 'no_answer').length;
+  const followup = outcomes.filter(o => o.actualOutcome === 'followup' || o.actualOutcome === 'marketing').length;
+
+  // Top recommended products
+  const recMap: Record<string, { count: number; hits: number }> = {};
+  for (const o of outcomes) {
+    if (!recMap[o.recommendedProduct]) recMap[o.recommendedProduct] = { count: 0, hits: 0 };
+    recMap[o.recommendedProduct].count++;
+    if (o.hitRecommendation) recMap[o.recommendedProduct].hits++;
+  }
+  const topRecommended = Object.entries(recMap)
+    .sort((a, b) => b[1].count - a[1].count)
+    .slice(0, 5)
+    .map(([product, { count, hits }]) => ({ product, count, hitRate: Math.round((hits / count) * 100) }));
+
+  // Top actually sold
+  const soldMap: Record<string, number> = {};
+  for (const o of outcomes) {
+    for (const p of o.actualProducts) {
+      soldMap[p] = (soldMap[p] ?? 0) + 1;
+    }
+  }
+  const topSold = Object.entries(soldMap)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([product, count]) => ({ product, count }));
+
+  // Most common divergent pairs (recommended X → sold Y)
+  const divMap: Record<string, number> = {};
+  for (const o of soldButDifferent) {
+    for (const p of o.actualProducts) {
+      const key = `${o.recommendedProduct} → ${p}`;
+      divMap[key] = (divMap[key] ?? 0) + 1;
+    }
+  }
+  const divergent = Object.entries(divMap)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([key, count]) => {
+      const [recommended, sold] = key.split(' → ');
+      return { recommended, sold, count };
+    });
+
+  return {
+    total, exactHits, nearHits, differentSales, noSale, followup,
+    hitRate: total > 0 ? Math.round((exactHits / total) * 100) : 0,
+    conversionRate: total > 0 ? Math.round(((exactHits + nearHits + differentSales) / total) * 100) : 0,
+    topRecommended, topSold, divergent,
+  };
+}
+
+function NBAReport() {
+  const [stats, setStats] = useState<NBAStats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    fetch(`${AI_CORE_URL}/nba/outcomes`)
+      .then(r => r.json())
+      .then((data: NBAOutcome[]) => setStats(computeNBAStats(data)))
+      .catch(() => setError('Kunne ikke hente NBA-data'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const statBoxes = stats ? [
+    { label: 'Tips vist', value: stats.total, color: BLUE, emoji: '📊' },
+    { label: 'Eksakt treff', value: stats.exactHits, color: '#16A34A', emoji: '🎯', sub: `${stats.hitRate}% treffsikkerhet` },
+    { label: 'Nær treff', value: stats.nearHits, color: '#D97706', emoji: '🔸', sub: 'Samme produktkategori' },
+    { label: 'Annet salg', value: stats.differentSales, color: '#7C3AED', emoji: '↔️', sub: 'Solgte noe helt annet' },
+    { label: 'Ingen salg', value: stats.noSale, color: GRAY400, emoji: '❌', sub: 'Avvist eller ikke hjemme' },
+    { label: 'Oppfølging', value: stats.followup, color: TEAL, emoji: '🔁', sub: 'Kan bli salg' },
+  ] : [];
+
+  return (
+    <div style={{ background: 'white', border: `1px solid ${GRAY200}`, borderRadius: 16, padding: 24, borderTop: `3px solid ${BLUE}` }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
+        <span style={{ fontSize: 20 }}>🎯</span>
+        <span style={{ fontSize: 15, fontWeight: 700, color: SLATE }}>NBA — Anbefalingsytelse (SDU)</span>
+        {stats && (
+          <span style={{ marginLeft: 'auto', fontSize: 12, color: GRAY400 }}>
+            Konverteringsrate: <strong style={{ color: SLATE }}>{stats.conversionRate}%</strong>
+          </span>
+        )}
+      </div>
+
+      {loading && <p style={{ fontSize: 13, color: GRAY400, margin: 0 }}>Laster NBA-data…</p>}
+      {error && <p style={{ fontSize: 13, color: '#DC2626', margin: 0 }}>{error}</p>}
+
+      {stats && stats.total === 0 && (
+        <div style={{ textAlign: 'center', padding: '24px 0', color: GRAY400 }}>
+          <div style={{ fontSize: 32, marginBottom: 8 }}>📭</div>
+          <p style={{ margin: 0, fontSize: 13 }}>Ingen NBA-utfall logget ennå. Utfall logges automatisk etter hvert besøk i Feltsalg-appen.</p>
+        </div>
+      )}
+
+      {stats && stats.total > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+          {/* Stat boxes */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+            {statBoxes.map(({ label, value, color, emoji, sub }) => (
+              <div key={label} style={{ background: GRAY50, border: `1px solid ${GRAY200}`, borderRadius: 12, padding: '16px 18px', borderLeft: `3px solid ${color}` }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                  <span style={{ fontSize: 16 }}>{emoji}</span>
+                  <span style={{ fontSize: 12, color: GRAY600, fontWeight: 600 }}>{label}</span>
+                </div>
+                <div style={{ fontSize: 28, fontWeight: 800, color }}>{value}</div>
+                {sub && <div style={{ fontSize: 11, color: GRAY400, marginTop: 3 }}>{sub}</div>}
+              </div>
+            ))}
+          </div>
+
+          {/* Progress bar */}
+          <div>
+            <div style={{ fontSize: 12, color: GRAY600, fontWeight: 600, marginBottom: 8 }}>Fordeling av alle tips</div>
+            <div style={{ display: 'flex', height: 10, borderRadius: 99, overflow: 'hidden', gap: 2 }}>
+              {[
+                { value: stats.exactHits, color: '#16A34A' },
+                { value: stats.nearHits, color: '#D97706' },
+                { value: stats.differentSales, color: '#7C3AED' },
+                { value: stats.noSale, color: GRAY200 },
+                { value: stats.followup, color: TEAL },
+              ].map(({ value, color }, i) => (
+                <div key={i} style={{ flex: value, background: color, minWidth: value > 0 ? 4 : 0 }} />
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 16, marginTop: 8, flexWrap: 'wrap' }}>
+              {[
+                { label: 'Eksakt treff', color: '#16A34A' },
+                { label: 'Nær treff', color: '#D97706' },
+                { label: 'Annet salg', color: '#7C3AED' },
+                { label: 'Ingen salg', color: GRAY200 },
+                { label: 'Oppfølging', color: TEAL },
+              ].map(({ label, color }) => (
+                <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: color }} />
+                  <span style={{ fontSize: 11, color: GRAY600 }}>{label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Two-column: top recommended vs top sold */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: GRAY600, marginBottom: 10 }}>TOP 5 — ANBEFALTE PRODUKTER</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {stats.topRecommended.map(({ product, count, hitRate }) => (
+                  <div key={product} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: GRAY50, borderRadius: 8 }}>
+                    <span style={{ fontSize: 12, flex: 1, color: SLATE, fontWeight: 500 }}>{product}</span>
+                    <span style={{ fontSize: 11, color: GRAY400 }}>{count}×</span>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: hitRate >= 50 ? '#16A34A' : hitRate >= 25 ? '#D97706' : '#DC2626' }}>{hitRate}% treff</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: GRAY600, marginBottom: 10 }}>TOP 5 — FAKTISK SOLGTE PRODUKTER</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {stats.topSold.map(({ product, count }) => (
+                  <div key={product} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: GRAY50, borderRadius: 8 }}>
+                    <span style={{ fontSize: 12, flex: 1, color: SLATE, fontWeight: 500 }}>{product}</span>
+                    <span style={{ fontSize: 11, color: '#16A34A', fontWeight: 700 }}>{count}× solgt</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Divergent pairs */}
+          {stats.divergent.length > 0 && (
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: GRAY600, marginBottom: 10 }}>MEST VANLIG: ANBEFALT → SOLGTE NOE ANNET</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {stats.divergent.map(({ recommended, sold, count }, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: '#FFF7ED', border: `1px solid #FED7AA`, borderRadius: 8 }}>
+                    <span style={{ fontSize: 12, color: '#92400E' }}><strong>{recommended}</strong> → {sold}</span>
+                    <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, color: '#D97706' }}>{count}×</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface InsightItem { reason?: string; product?: string; trend?: string; signal?: string; frequency?: string; detail?: string; }
 interface InsightsReport {
   churnReasons:   Array<{ reason: string; frequency: string; detail: string }>;
@@ -832,12 +1062,15 @@ function InsightsPage({ onBack }: { user: HubUser; onBack: () => void }) {
         )}
 
         {!report && !loading && (
-          <div style={{ textAlign: 'center', padding: '60px 20px', color: GRAY400 }}>
+          <div style={{ textAlign: 'center', padding: '40px 20px', color: GRAY400 }}>
             <div style={{ fontSize: 48, marginBottom: 16 }}>📊</div>
             <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Klar til å lære</div>
             <div style={{ fontSize: 13 }}>Klikk "Kjør analyse" for å hente innsikt fra tvers av SDU og MDU.</div>
           </div>
         )}
+
+        {/* NBA performance report — always visible */}
+        <NBAReport />
 
       </main>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
