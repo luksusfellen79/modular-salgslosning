@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { Resident, Campaign, UpsellProduct, VisitStatus, VisitOutcome } from './lib/types';
-import { fetchResidents, logSDUOutcome } from './lib/kasCore';
+import { fetchResidents, logSDUOutcome, fetchNBA, logNBAOutcome, NBARecommendation } from './lib/kasCore';
 import { fetchSellers, fetchRoundsForSeller, updateUnitVisit, Round, RoundUnit, Seller, UnitVisitStatus } from './lib/salesCore';
 
 // ── Telenor logo ──────────────────────────────────────────────────────────────
@@ -636,6 +636,65 @@ function CustomerAccept({
   );
 }
 
+// ── NBA Card ──────────────────────────────────────────────────────────────────
+function NBACard({ rec, loading }: { rec: NBARecommendation | null; loading: boolean }) {
+  if (loading) {
+    return (
+      <div className="bg-white rounded-xl p-4 border border-gray-100 flex items-center gap-2.5">
+        <div className="w-6 h-6 rounded-full bg-[#005A8E]/10 flex items-center justify-center shrink-0">
+          <svg className="w-3.5 h-3.5 animate-spin text-[#005A8E]" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z" />
+          </svg>
+        </div>
+        <span className="text-xs text-gray-400">AI analyserer beboeren…</span>
+      </div>
+    );
+  }
+
+  if (!rec) return null;
+
+  const confidenceConfig = {
+    high:   { label: 'Høy sikkerhet',  color: '#00A650', bg: '#E6F6ED' },
+    medium: { label: 'Medium',         color: '#F5A623', bg: '#FFF8E6' },
+    low:    { label: 'Lav sikkerhet',  color: '#9DA5B1', bg: '#F3F4F6' },
+  }[rec.confidence];
+
+  return (
+    <div className="bg-[#005A8E]/5 rounded-xl border border-[#005A8E]/15 overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#005A8E]/10">
+        <div className="flex items-center gap-2">
+          <svg className="w-3.5 h-3.5 text-[#005A8E]" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+            <path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+          </svg>
+          <span className="text-[10px] font-bold text-[#005A8E] uppercase tracking-widest">AI-anbefaling</span>
+        </div>
+        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+          style={{ color: confidenceConfig.color, background: confidenceConfig.bg }}>
+          {confidenceConfig.label}
+        </span>
+      </div>
+
+      <div className="px-4 py-3 space-y-2">
+        {/* Headline */}
+        <div className="font-bold text-sm text-gray-900">{rec.headline}</div>
+
+        {/* Product + extras */}
+        <div className="flex flex-wrap gap-1.5">
+          <span className="bg-[#005A8E] text-white text-xs font-semibold px-2.5 py-1 rounded-full">{rec.product}</span>
+          {rec.extras.map((e) => (
+            <span key={e} className="bg-[#005A8E]/10 text-[#005A8E] text-xs font-semibold px-2.5 py-1 rounded-full">{e}</span>
+          ))}
+        </div>
+
+        {/* Reason */}
+        <p className="text-xs text-gray-500 leading-relaxed">{rec.reason}</p>
+      </div>
+    </div>
+  );
+}
+
 // ── Resident Detail ───────────────────────────────────────────────────────────
 function ResidentDetail({
   unit,
@@ -659,6 +718,8 @@ function ResidentDetail({
   const [orderStep, setOrderStep] = useState<'select' | 'summary' | 'accept'>('select');
   const [pendingCampaign, setPendingCampaign] = useState<Campaign | null>(null);
   const [pendingExtras, setPendingExtras] = useState<UpsellProduct[]>([]);
+  const [nbaRec, setNbaRec] = useState<NBARecommendation | null>(null);
+  const [nbaLoading, setNbaLoading] = useState(true);
 
   useEffect(() => {
     fetchResidents(unit.buildingId)
@@ -669,6 +730,15 @@ function ResidentDetail({
       .catch(() => setResident(null))
       .finally(() => setLoadingResident(false));
   }, [unit.buildingId, unit.unitId]);
+
+  // Fetch NBA recommendation in parallel
+  useEffect(() => {
+    setNbaLoading(true);
+    fetchNBA(unit.unitId, unit.buildingId)
+      .then(setNbaRec)
+      .catch(() => setNbaRec(null))
+      .finally(() => setNbaLoading(false));
+  }, [unit.unitId, unit.buildingId]);
 
   const showToast = (msg: string) => {
     setToastMsg(msg);
@@ -701,6 +771,19 @@ function ResidentDetail({
           outcome === 'followup' ? 'Oppfølging avtalt' : outcome === 'marketing' ? 'Marketing-kampanje' : undefined
         );
 
+        // 3. Log NBA outcome (fire-and-forget learning signal)
+        if (nbaRec) {
+          logNBAOutcome({
+            unitId: resident.unitId,
+            buildingId: unit.buildingId,
+            recommendedProduct: nbaRec.product,
+            recommendedCampaign: nbaRec.campaign,
+            actualOutcome: outcome,
+            actualProducts: soldProducts,
+            hitRecommendation: outcome === 'sold' && soldProducts.includes(nbaRec.product),
+          });
+        }
+
         const status: VisitStatus = {
           outcome,
           campaignId: campaign.id,
@@ -723,7 +806,7 @@ function ResidentDetail({
         setLogging(false);
       }
     },
-    [logging, resident, round, unit, seller, onVisitLogged, onBack]
+    [logging, resident, round, unit, seller, onVisitLogged, onBack, nbaRec]
   );
 
   // Step transition handlers
@@ -849,6 +932,9 @@ function ResidentDetail({
                   ))}
                 </div>
               </div>
+
+              {/* NBA recommendation */}
+              <NBACard rec={nbaRec} loading={nbaLoading} />
 
               {resident.existingProducts.length > 0 && (
                 <div className="bg-white rounded-xl p-4 border border-gray-100">

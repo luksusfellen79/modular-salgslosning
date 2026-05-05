@@ -1,6 +1,28 @@
 import { Resident, VisitOutcome } from './types';
 
 const BASE = (import.meta.env.VITE_KAS_CORE_URL as string | undefined) ?? 'http://localhost:3001';
+const AI_BASE = (import.meta.env.VITE_AI_CORE_URL as string | undefined) ?? 'http://localhost:3000';
+
+// ── NBA types ─────────────────────────────────────────────────────────────────
+
+export interface NBARecommendation {
+  product: string;
+  campaign: string;
+  extras: string[];
+  headline: string;
+  reason: string;
+  confidence: 'high' | 'medium' | 'low';
+}
+
+export interface NBAOutcomePayload {
+  unitId: string;
+  buildingId: string;
+  recommendedProduct: string;
+  recommendedCampaign: string;
+  actualOutcome: VisitOutcome;
+  actualProducts: string[];
+  hitRecommendation: boolean;
+}
 
 // ── Fetch residents for a building ───────────────────────────────────────────
 
@@ -40,4 +62,21 @@ export async function logSDUOutcome(params: {
 
   const data = await res.json() as { customer: { customerId: string }; created: boolean };
   return { logged: true, customerId: data.customer.customerId, created: data.created };
+}
+
+// ── Next Best Action ──────────────────────────────────────────────────────────
+
+export async function fetchNBA(unitId: string, buildingId: string): Promise<NBARecommendation> {
+  const res = await fetch(`${AI_BASE}/nba/sdu/${unitId}?buildingId=${buildingId}`);
+  if (!res.ok) throw new Error(`AI Core: ${res.status}`);
+  return res.json() as Promise<NBARecommendation>;
+}
+
+export async function logNBAOutcome(payload: NBAOutcomePayload): Promise<void> {
+  // Fire-and-forget — never block the UI
+  fetch(`${AI_BASE}/nba/outcome`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  }).catch(() => { /* silent — learning signal, not critical */ });
 }
