@@ -615,7 +615,7 @@ function InsightCard({ title, emoji, items, color, renderItem }: {
   );
 }
 
-function InsightsPage({ user, onBack }: { user: HubUser; onBack: () => void }) {
+function InsightsPage({ onBack }: { user: HubUser; onBack: () => void }) {
   const [report, setReport] = useState<InsightsReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
