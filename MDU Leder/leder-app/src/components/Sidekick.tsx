@@ -74,8 +74,9 @@ export function Sidekick({ mode = 'leder', context = {} }: SidekickProps) {
     try {
       const reply = await chatWithSidekick(mode, context, newMessages);
       setMessages((prev) => [...prev, { role: 'assistant', content: reply }]);
-    } catch {
-      setError('Noe gikk galt. Prøv igjen.');
+    } catch (err) {
+      console.error('Sidekick error:', err);
+      setError(err instanceof Error ? err.message : 'Noe gikk galt. Prøv igjen.');
     } finally {
       setLoading(false);
     }
