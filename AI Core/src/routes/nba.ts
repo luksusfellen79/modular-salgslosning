@@ -69,3 +69,8 @@ nbaRouter.post('/outcome', (req, res) => {
   console.log('NBA outcome logged:', outcome);
   res.json({ ok: true });
 });
+
+// GET /nba/outcomes — expose all logged SDU outcomes for the Insights Agent
+nbaRouter.get('/outcomes', (_req, res) => {
+  res.json(outcomeLog);
+});

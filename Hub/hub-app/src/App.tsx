@@ -217,7 +217,7 @@ function appUrl(baseUrl: string, user: HubUser): string {
   return `${baseUrl}?hub_session=${token}`;
 }
 
-function Dashboard({ user, stats, onAdmin, onLogout }: { user: HubUser; stats: SalesStats | null; onAdmin: () => void; onLogout: () => void }) {
+function Dashboard({ user, stats, onAdmin, onLogout, onInsights }: { user: HubUser; stats: SalesStats | null; onAdmin: () => void; onLogout: () => void; onInsights: () => void }) {
   const userCards = APP_CARDS.filter(c => user.permissions.includes(c.permission));
 
   const statItems = [
@@ -312,6 +312,31 @@ function Dashboard({ user, stats, onAdmin, onLogout }: { user: HubUser; stats: S
           <div style={{ textAlign: 'center', padding: 60, color: GRAY400 }}>
             <div style={{ fontSize: 40, marginBottom: 12 }}>🔒</div>
             <div style={{ fontSize: 15 }}>Du har ikke tilgang til noen apper ennå. Kontakt administrator.</div>
+          </div>
+        )}
+
+        {/* Insights card — visible to salgsleder + superadmin */}
+        {(user.role === 'superadmin' || user.role === 'salgsleder') && (
+          <div style={{ marginTop: 36 }}>
+            <h2 style={{ margin: '0 0 20px', fontSize: 16, fontWeight: 700, color: GRAY600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              AI-verktøy
+            </h2>
+            <div
+              onClick={onInsights}
+              style={{ background: `linear-gradient(135deg, #1E293B 0%, #0F172A 100%)`, borderRadius: 18, padding: '28px 32px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 24, boxShadow: '0 4px 20px rgba(0,0,0,0.12)', transition: 'transform 0.2s, box-shadow 0.2s' }}
+              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = '0 12px 40px rgba(0,0,0,0.2)'; }}
+              onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,0,0,0.12)'; }}
+            >
+              <div style={{ fontSize: 48, flexShrink: 0 }}>🧠</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 20, fontWeight: 800, color: 'white', marginBottom: 6 }}>Innsikt-agent</div>
+                <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.55)', lineHeight: 1.6, maxWidth: 560 }}>
+                  Analyserer salg og interaksjoner på tvers av SDU og MDU. Identifiserer churn-mønstre, vinnerformler og produkt-trender.
+                  Læringen er delt mellom kanalene — slik at hele organisasjonen blir klokere.
+                </div>
+              </div>
+              <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 24, flexShrink: 0 }}>→</div>
+            </div>
           </div>
         )}
       </main>
@@ -553,8 +578,275 @@ function UserModal({ mode, userId, initialData, currentUserId, onClose, onSaved 
   );
 }
 
+// ─── Insights Page ────────────────────────────────────────────────────────────
+const AI_CORE_URL  = (import.meta.env.VITE_AI_CORE_URL   as string | undefined) ?? 'http://localhost:3000';
+const SALES_CORE_URL = (import.meta.env.VITE_SALES_CORE_URL as string | undefined) ?? 'http://localhost:3005';
+
+interface InsightItem { reason?: string; product?: string; trend?: string; signal?: string; frequency?: string; detail?: string; }
+interface InsightsReport {
+  churnReasons:   Array<{ reason: string; frequency: string; detail: string }>;
+  winReasons:     Array<{ reason: string; frequency: string; detail: string }>;
+  productTrends:  Array<{ product: string; trend: string; signal: string }>;
+  keyInsights:    string[];
+  recommendations: string[];
+  dataNote:       string;
+}
+
+const FREQ_COLOR: Record<string, string> = { høy: '#DC2626', middels: '#D97706', lav: '#16A34A' };
+const TREND_COLOR: Record<string, string> = { voksende: '#16A34A', stabil: '#2563EB', synkende: '#DC2626' };
+
+function InsightCard({ title, emoji, items, color, renderItem }: {
+  title: string; emoji: string; items: InsightItem[]; color: string;
+  renderItem: (item: InsightItem, i: number) => React.ReactNode;
+}) {
+  return (
+    <div style={{ background: 'white', border: `1px solid ${GRAY200}`, borderRadius: 16, padding: 24, borderTop: `3px solid ${color}` }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+        <span style={{ fontSize: 20 }}>{emoji}</span>
+        <span style={{ fontSize: 15, fontWeight: 700, color: SLATE }}>{title}</span>
+      </div>
+      {items.length === 0
+        ? <p style={{ fontSize: 13, color: GRAY400, margin: 0 }}>Ikke nok data ennå.</p>
+        : <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {items.map((item, i) => renderItem(item, i))}
+          </div>
+      }
+    </div>
+  );
+}
+
+function InsightsPage({ user, onBack }: { user: HubUser; onBack: () => void }) {
+  const [report, setReport] = useState<InsightsReport | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [lastRun, setLastRun] = useState<string | null>(null);
+
+  const runAnalysis = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      // Fetch MDU deals and SDU outcomes in parallel
+      const [mduRes, sduRes] = await Promise.all([
+        fetch(`${SALES_CORE_URL}/api/opportunities`),
+        fetch(`${AI_CORE_URL}/nba/outcomes`),
+      ]);
+
+      const mduDeals = mduRes.ok ? await mduRes.json() : [];
+      const sduOutcomes = sduRes.ok ? await sduRes.json() : [];
+
+      // Summarise MDU deals for the payload
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const mduSummary = (mduDeals as any[]).map((d: any) => ({
+        navn: d.accountName,
+        fase: d.stage,
+        enheter: d.units,
+        arsverdi: d.estimatedAnnualValue,
+        lukkedato: d.closeDate,
+        selger: d.salesRepName,
+        warRoom: d.warRoomStatus,
+      }));
+
+      const analyzeRes = await fetch(`${AI_CORE_URL}/insights/analyze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mduDeals: mduSummary, sduOutcomes }),
+      });
+
+      if (!analyzeRes.ok) throw new Error(`Analyse feilet: ${analyzeRes.status}`);
+      const data = await analyzeRes.json() as InsightsReport;
+      setReport(data);
+      setLastRun(new Date().toLocaleString('nb-NO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Noe gikk galt');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{ minHeight: '100vh', background: GRAY50, fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+      {/* Header */}
+      <header style={{ background: `linear-gradient(135deg, ${BLUE_DARK} 0%, ${BLUE} 100%)`, padding: '0 32px', height: 64, display: 'flex', alignItems: 'center', gap: 16 }}>
+        <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', padding: '7px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 13 }}>← Tilbake</button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <TelenorLogo size={24} white />
+          <span style={{ color: 'white', fontWeight: 700, fontSize: 16 }}>Innsikt</span>
+        </div>
+        {lastRun && <span style={{ color: 'rgba(255,255,255,0.45)', fontSize: 12, marginLeft: 'auto' }}>Sist kjørt: {lastRun}</span>}
+      </header>
+
+      <main style={{ maxWidth: 1100, margin: '0 auto', padding: '40px 24px' }}>
+
+        {/* What is this agent */}
+        <div style={{ background: 'white', border: `1px solid ${GRAY200}`, borderRadius: 18, padding: 28, marginBottom: 32, display: 'flex', gap: 24, alignItems: 'flex-start' }}>
+          <div style={{ fontSize: 40, flexShrink: 0 }}>🧠</div>
+          <div style={{ flex: 1 }}>
+            <h1 style={{ margin: '0 0 8px', fontSize: 22, fontWeight: 800, color: SLATE }}>Innsikt-agent</h1>
+            <p style={{ margin: '0 0 12px', fontSize: 14, color: GRAY600, lineHeight: 1.7 }}>
+              Denne agenten analyserer alle salg og interaksjoner på tvers av <strong>SDU (feltsalg/dørsalg)</strong> og <strong>MDU (borettslag og sameier)</strong> — og lærer av dem.
+              Den ser etter mønstre i hva vi selger, hva vi taper, og hva kundene faktisk snakker om.
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+              {[
+                { icon: '📉', label: 'Churn-årsaker', desc: 'Hvorfor avvises vi? Hva er de vanligste innvendingene?' },
+                { icon: '✅', label: 'Vinnerformelen', desc: 'Hva gjør at kunden sier ja? Mønstre på tvers av selgere og kanaler.' },
+                { icon: '📦', label: 'Produkt-trender', desc: 'Hvilke produkter og behov snakker kundene om? Hva stiger eller synker?' },
+              ].map(({ icon, label, desc }) => (
+                <div key={label} style={{ background: GRAY50, border: `1px solid ${GRAY200}`, borderRadius: 12, padding: '14px 16px' }}>
+                  <div style={{ fontSize: 22, marginBottom: 6 }}>{icon}</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: SLATE, marginBottom: 4 }}>{label}</div>
+                  <div style={{ fontSize: 12, color: GRAY400, lineHeight: 1.5 }}>{desc}</div>
+                </div>
+              ))}
+            </div>
+            <p style={{ margin: '16px 0 0', fontSize: 12, color: GRAY400 }}>
+              📌 I dag bruker agenten salgsresultater og pipeline-data. Fremtidig støtte: samtalelogger, e-poster og møtereferater.
+              Læringen er delt mellom SDU og MDU — slik at hele organisasjonen drar nytte av den.
+            </p>
+          </div>
+        </div>
+
+        {/* Run button */}
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 36 }}>
+          <button
+            onClick={() => void runAnalysis()}
+            disabled={loading}
+            style={{
+              background: loading ? GRAY200 : `linear-gradient(135deg, ${BLUE} 0%, ${TEAL} 100%)`,
+              color: loading ? GRAY400 : 'white',
+              border: 'none', borderRadius: 14, padding: '16px 36px',
+              fontSize: 16, fontWeight: 700, cursor: loading ? 'default' : 'pointer',
+              boxShadow: loading ? 'none' : '0 8px 24px rgba(0,90,142,0.3)',
+              transition: 'all 0.2s',
+              display: 'flex', alignItems: 'center', gap: 10,
+            }}
+          >
+            {loading ? (
+              <>
+                <span style={{ display: 'inline-block', width: 18, height: 18, border: '2px solid rgba(0,0,0,0.15)', borderTop: '2px solid #94A3B8', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                Analyserer data…
+              </>
+            ) : (
+              <>🔍 Kjør analyse</>
+            )}
+          </button>
+        </div>
+
+        {error && (
+          <div style={{ background: '#FEE2E2', color: '#DC2626', padding: '14px 18px', borderRadius: 10, marginBottom: 24, fontSize: 13 }}>{error}</div>
+        )}
+
+        {/* Results */}
+        {report && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+
+            {/* Key insights banner */}
+            <div style={{ background: `linear-gradient(135deg, ${BLUE_DARK} 0%, ${BLUE} 100%)`, borderRadius: 16, padding: '22px 28px' }}>
+              <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 14 }}>Viktigste funn</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {report.keyInsights.map((insight, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                    <span style={{ color: '#60A5FA', fontSize: 16, marginTop: 1, flexShrink: 0 }}>→</span>
+                    <span style={{ color: 'white', fontSize: 14, lineHeight: 1.5 }}>{insight}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* 3-column grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+              <InsightCard
+                title="Churn-årsaker" emoji="📉" color="#DC2626"
+                items={report.churnReasons}
+                renderItem={(item, i) => (
+                  <div key={i} style={{ padding: '12px 14px', background: GRAY50, borderRadius: 10, borderLeft: `3px solid ${FREQ_COLOR[item.frequency ?? 'lav'] ?? GRAY200}` }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: SLATE }}>{item.reason}</span>
+                      <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 99, background: FREQ_COLOR[item.frequency ?? 'lav'] + '20', color: FREQ_COLOR[item.frequency ?? 'lav'], fontWeight: 700 }}>
+                        {item.frequency}
+                      </span>
+                    </div>
+                    <p style={{ margin: 0, fontSize: 12, color: GRAY600, lineHeight: 1.5 }}>{item.detail}</p>
+                  </div>
+                )}
+              />
+
+              <InsightCard
+                title="Vinnerformelen" emoji="✅" color="#16A34A"
+                items={report.winReasons}
+                renderItem={(item, i) => (
+                  <div key={i} style={{ padding: '12px 14px', background: GRAY50, borderRadius: 10, borderLeft: `3px solid ${FREQ_COLOR[item.frequency ?? 'lav'] ?? GRAY200}` }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: SLATE }}>{item.reason}</span>
+                      <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 99, background: FREQ_COLOR[item.frequency ?? 'lav'] + '20', color: FREQ_COLOR[item.frequency ?? 'lav'], fontWeight: 700 }}>
+                        {item.frequency}
+                      </span>
+                    </div>
+                    <p style={{ margin: 0, fontSize: 12, color: GRAY600, lineHeight: 1.5 }}>{item.detail}</p>
+                  </div>
+                )}
+              />
+            </div>
+
+            <InsightCard
+              title="Produkt- og behovstrender" emoji="📦" color={BLUE}
+              items={report.productTrends}
+              renderItem={(item, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '12px 14px', background: GRAY50, borderRadius: 10 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: SLATE }}>{item.product}</span>
+                      <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 99, background: TREND_COLOR[item.trend ?? 'stabil'] + '20', color: TREND_COLOR[item.trend ?? 'stabil'], fontWeight: 700 }}>
+                        {item.trend}
+                      </span>
+                    </div>
+                    <p style={{ margin: 0, fontSize: 12, color: GRAY600 }}>{item.signal}</p>
+                  </div>
+                </div>
+              )}
+            />
+
+            {/* Recommendations */}
+            <div style={{ background: 'white', border: `1px solid ${GRAY200}`, borderRadius: 16, padding: 24, borderTop: `3px solid ${TEAL}` }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+                <span style={{ fontSize: 20 }}>💡</span>
+                <span style={{ fontSize: 15, fontWeight: 700, color: SLATE }}>Anbefalte tiltak</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {report.recommendations.map((rec, i) => (
+                  <div key={i} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '12px 14px', background: '#F0FDF4', borderRadius: 10 }}>
+                    <span style={{ width: 22, height: 22, borderRadius: '50%', background: TEAL, color: 'white', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>{i + 1}</span>
+                    <span style={{ fontSize: 13, color: SLATE, lineHeight: 1.5 }}>{rec}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Data note */}
+            <div style={{ background: GRAY100, borderRadius: 10, padding: '12px 16px', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+              <span style={{ fontSize: 16 }}>ℹ️</span>
+              <p style={{ margin: 0, fontSize: 12, color: GRAY600, lineHeight: 1.6 }}><strong>Datanote:</strong> {report.dataNote}</p>
+            </div>
+
+          </div>
+        )}
+
+        {!report && !loading && (
+          <div style={{ textAlign: 'center', padding: '60px 20px', color: GRAY400 }}>
+            <div style={{ fontSize: 48, marginBottom: 16 }}>📊</div>
+            <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Klar til å lære</div>
+            <div style={{ fontSize: 13 }}>Klikk "Kjør analyse" for å hente innsikt fra tvers av SDU og MDU.</div>
+          </div>
+        )}
+
+      </main>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
+}
+
 // ─── App Root ─────────────────────────────────────────────────────────────────
-type Screen = 'login' | 'dashboard' | 'admin';
+type Screen = 'login' | 'dashboard' | 'admin' | 'insights';
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>(() => getSession() ? 'dashboard' : 'login');
@@ -573,5 +865,6 @@ export default function App() {
   if (screen === 'login') return <LoginPage onLogin={handleLogin} />;
   if (!user) return <LoginPage onLogin={handleLogin} />;
   if (screen === 'admin') return <AdminPanel currentUser={user} onBack={() => setScreen('dashboard')} />;
-  return <Dashboard user={user} stats={stats} onAdmin={() => setScreen('admin')} onLogout={handleLogout} />;
+  if (screen === 'insights') return <InsightsPage user={user} onBack={() => setScreen('dashboard')} />;
+  return <Dashboard user={user} stats={stats} onAdmin={() => setScreen('admin')} onLogout={handleLogout} onInsights={() => setScreen('insights')} />;
 }
