@@ -217,7 +217,7 @@ function appUrl(baseUrl: string, user: HubUser): string {
   return `${baseUrl}?hub_session=${token}`;
 }
 
-function Dashboard({ user, stats, onAdmin, onLogout, onInsights }: { user: HubUser; stats: SalesStats | null; onAdmin: () => void; onLogout: () => void; onInsights: () => void }) {
+function Dashboard({ user, stats, onAdmin, onLogout, onInsights, onNBA }: { user: HubUser; stats: SalesStats | null; onAdmin: () => void; onLogout: () => void; onInsights: () => void; onNBA: () => void }) {
   const userCards = APP_CARDS.filter(c => user.permissions.includes(c.permission));
 
   const statItems = [
@@ -321,21 +321,38 @@ function Dashboard({ user, stats, onAdmin, onLogout, onInsights }: { user: HubUs
             <h2 style={{ margin: '0 0 20px', fontSize: 16, fontWeight: 700, color: GRAY600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               AI-verktøy
             </h2>
-            <div
-              onClick={onInsights}
-              style={{ background: `linear-gradient(135deg, #1E293B 0%, #0F172A 100%)`, borderRadius: 18, padding: '28px 32px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 24, boxShadow: '0 4px 20px rgba(0,0,0,0.12)', transition: 'transform 0.2s, box-shadow 0.2s' }}
-              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = '0 12px 40px rgba(0,0,0,0.2)'; }}
-              onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,0,0,0.12)'; }}
-            >
-              <div style={{ fontSize: 48, flexShrink: 0 }}>🧠</div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 20, fontWeight: 800, color: 'white', marginBottom: 6 }}>Innsikt-agent</div>
-                <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.55)', lineHeight: 1.6, maxWidth: 560 }}>
-                  Analyserer salg og interaksjoner på tvers av SDU og MDU. Identifiserer churn-mønstre, vinnerformler og produkt-trender.
-                  Læringen er delt mellom kanalene — slik at hele organisasjonen blir klokere.
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div
+                onClick={onInsights}
+                style={{ background: `linear-gradient(135deg, #1E293B 0%, #0F172A 100%)`, borderRadius: 18, padding: '24px 28px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 20, boxShadow: '0 4px 20px rgba(0,0,0,0.12)', transition: 'transform 0.2s, box-shadow 0.2s' }}
+                onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = '0 12px 40px rgba(0,0,0,0.2)'; }}
+                onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,0,0,0.12)'; }}
+              >
+                <div style={{ fontSize: 40, flexShrink: 0 }}>🧠</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: 'white', marginBottom: 4 }}>Innsikt-agent</div>
+                  <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.55)', lineHeight: 1.6 }}>
+                    Analyserer salg og interaksjoner på tvers av SDU og MDU. Identifiserer churn-mønstre, vinnerformler og produkt-trender.
+                  </div>
                 </div>
+                <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 22, flexShrink: 0 }}>→</div>
               </div>
-              <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 24, flexShrink: 0 }}>→</div>
+
+              <div
+                onClick={onNBA}
+                style={{ background: `linear-gradient(135deg, #1C3A5E 0%, #0F2744 100%)`, borderRadius: 18, padding: '24px 28px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 20, boxShadow: '0 4px 20px rgba(0,0,0,0.12)', transition: 'transform 0.2s, box-shadow 0.2s' }}
+                onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = '0 12px 40px rgba(0,0,0,0.2)'; }}
+                onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,0,0,0.12)'; }}
+              >
+                <div style={{ fontSize: 40, flexShrink: 0 }}>🎯</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: 'white', marginBottom: 4 }}>NBA-agent — Next Best Action</div>
+                  <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.55)', lineHeight: 1.6 }}>
+                    Lytter til hvert salgsbesøk og lærer av reelle utfall. Rapport over treffsikkerhet, avvik og produktmønstre.
+                  </div>
+                </div>
+                <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 22, flexShrink: 0 }}>→</div>
+              </div>
             </div>
           </div>
         )}
@@ -845,6 +862,196 @@ function InsightCard({ title, emoji, items, color, renderItem }: {
   );
 }
 
+// ─── NBA Page ─────────────────────────────────────────────────────────────────
+function NBAPage({ onBack }: { user: HubUser; onBack: () => void }) {
+  const [stats, setStats] = useState<NBAStats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    fetch(`${AI_CORE_URL}/nba/outcomes`)
+      .then(r => r.json())
+      .then((data: NBAOutcome[]) => setStats(computeNBAStats(data)))
+      .catch(() => setError('Kunne ikke hente NBA-data'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const statBoxes = stats ? [
+    { label: 'Tips vist', value: stats.total, color: BLUE, emoji: '📊', sub: 'Totalt antall anbefalinger gitt' },
+    { label: 'Eksakt treff', value: stats.exactHits, color: '#16A34A', emoji: '🎯', sub: `${stats.hitRate}% treffsikkerhet` },
+    { label: 'Nær treff', value: stats.nearHits, color: '#D97706', emoji: '🔸', sub: 'Solgte i samme kategori' },
+    { label: 'Annet salg', value: stats.differentSales, color: '#7C3AED', emoji: '↔️', sub: 'Solgte noe helt annet' },
+    { label: 'Ingen salg', value: stats.noSale, color: GRAY400, emoji: '❌', sub: 'Avvist eller ikke hjemme' },
+    { label: 'Oppfølging', value: stats.followup, color: TEAL, emoji: '🔁', sub: 'Potensielle fremtidige salg' },
+  ] : [];
+
+  return (
+    <div style={{ minHeight: '100vh', background: GRAY50, fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+      <header style={{ background: `linear-gradient(135deg, ${BLUE_DARK} 0%, ${BLUE} 100%)`, padding: '0 32px', height: 64, display: 'flex', alignItems: 'center', gap: 16 }}>
+        <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', padding: '7px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 13 }}>← Tilbake</button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <TelenorLogo size={24} white />
+          <span style={{ color: 'white', fontWeight: 700, fontSize: 16 }}>NBA — Next Best Action</span>
+        </div>
+      </header>
+
+      <main style={{ maxWidth: 1100, margin: '0 auto', padding: '40px 24px' }}>
+
+        {/* What is this agent */}
+        <div style={{ background: 'white', border: `1px solid ${GRAY200}`, borderRadius: 18, padding: 28, marginBottom: 32, display: 'flex', gap: 24, alignItems: 'flex-start' }}>
+          <div style={{ fontSize: 40, flexShrink: 0 }}>🎯</div>
+          <div style={{ flex: 1 }}>
+            <h1 style={{ margin: '0 0 8px', fontSize: 22, fontWeight: 800, color: SLATE }}>Next Best Action-agent</h1>
+            <p style={{ margin: '0 0 16px', fontSize: 14, color: GRAY600, lineHeight: 1.8 }}>
+              NBA-agenten <strong>lytter til hvert salgsbesøk, observerer hva som faktisk ble solgt</strong>, og justerer sine anbefalinger deretter.
+              Den starter uten fordommer — og blir gradvis klokere for hvert utfall som logges.
+              Over tid lærer den hvilke produkter som treffer i hvilke bygg, hvilke kampanjer som resonerer med hvilke kundetyper,
+              og hvilke anbefalinger som konsekvent leder til ja.
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 16 }}>
+              {[
+                { icon: '👂', label: 'Lytter', desc: 'Registrerer hvert salgsbesøk — hva ble anbefalt, hva ble solgt, hva skjedde.' },
+                { icon: '🔍', label: 'Observerer', desc: 'Ser mønstre på tvers av bygg, selgere og produkter — ikke bare enkelttilfeller.' },
+                { icon: '📈', label: 'Lærer', desc: 'Blir mer presis for hvert datapunkt. Nabolagseffekter og kampanjehistorikk vektes inn automatisk.' },
+              ].map(({ icon, label, desc }) => (
+                <div key={label} style={{ background: GRAY50, border: `1px solid ${GRAY200}`, borderRadius: 12, padding: '14px 16px' }}>
+                  <div style={{ fontSize: 22, marginBottom: 6 }}>{icon}</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: SLATE, marginBottom: 4 }}>{label}</div>
+                  <div style={{ fontSize: 12, color: GRAY400, lineHeight: 1.5 }}>{desc}</div>
+                </div>
+              ))}
+            </div>
+            <p style={{ margin: 0, fontSize: 12, color: GRAY400, lineHeight: 1.6 }}>
+              📌 Anbefalingene vises direkte til selger i Feltsalg-appen på adressenivå. Utfall logges automatisk etter hvert besøk og
+              brukes som læringssignal til neste runde. Jo mer data, jo bedre anbefalinger.
+            </p>
+          </div>
+        </div>
+
+        {loading && <p style={{ textAlign: 'center', color: GRAY400, padding: 40 }}>Laster NBA-data…</p>}
+        {error && <div style={{ background: '#FEE2E2', color: '#DC2626', padding: '14px 18px', borderRadius: 10, marginBottom: 24, fontSize: 13 }}>{error}</div>}
+
+        {stats && stats.total === 0 && (
+          <div style={{ textAlign: 'center', padding: '60px 20px', color: GRAY400 }}>
+            <div style={{ fontSize: 48, marginBottom: 16 }}>📭</div>
+            <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Ingen utfall logget ennå</div>
+            <div style={{ fontSize: 13, maxWidth: 400, margin: '0 auto', lineHeight: 1.6 }}>
+              Utfall logges automatisk etter hvert besøk i Feltsalg-appen. Kom tilbake hit etter første salgsdøgn.
+            </div>
+          </div>
+        )}
+
+        {stats && stats.total > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+
+            {/* Stat grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
+              {statBoxes.map(({ label, value, color, emoji, sub }) => (
+                <div key={label} style={{ background: 'white', border: `1px solid ${GRAY200}`, borderRadius: 14, padding: '20px 22px', borderLeft: `4px solid ${color}` }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                    <span style={{ fontSize: 18 }}>{emoji}</span>
+                    <span style={{ fontSize: 12, color: GRAY600, fontWeight: 600 }}>{label}</span>
+                  </div>
+                  <div style={{ fontSize: 36, fontWeight: 800, color, lineHeight: 1 }}>{value}</div>
+                  <div style={{ fontSize: 11, color: GRAY400, marginTop: 6 }}>{sub}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Progress bar */}
+            <div style={{ background: 'white', border: `1px solid ${GRAY200}`, borderRadius: 14, padding: '20px 22px' }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: SLATE, marginBottom: 12 }}>Fordeling av alle {stats.total} anbefalinger</div>
+              <div style={{ display: 'flex', height: 14, borderRadius: 99, overflow: 'hidden', gap: 2 }}>
+                {[
+                  { value: stats.exactHits, color: '#16A34A', label: `Eksakt treff (${stats.exactHits})` },
+                  { value: stats.nearHits, color: '#D97706', label: `Nær treff (${stats.nearHits})` },
+                  { value: stats.differentSales, color: '#7C3AED', label: `Annet salg (${stats.differentSales})` },
+                  { value: stats.followup, color: TEAL, label: `Oppfølging (${stats.followup})` },
+                  { value: stats.noSale, color: GRAY200, label: `Ingen salg (${stats.noSale})` },
+                ].map(({ value, color }, i) => (
+                  <div key={i} style={{ flex: value, background: color, minWidth: value > 0 ? 6 : 0, transition: 'flex 0.3s' }} />
+                ))}
+              </div>
+              <div style={{ display: 'flex', gap: 18, marginTop: 10, flexWrap: 'wrap' }}>
+                {[
+                  { label: `Eksakt treff`, color: '#16A34A' },
+                  { label: `Nær treff`, color: '#D97706' },
+                  { label: `Annet salg`, color: '#7C3AED' },
+                  { label: `Oppfølging`, color: TEAL },
+                  { label: `Ingen salg`, color: GRAY200 },
+                ].map(({ label, color }) => (
+                  <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{ width: 10, height: 10, borderRadius: '50%', background: color, border: color === GRAY200 ? `1px solid ${GRAY400}` : 'none' }} />
+                    <span style={{ fontSize: 12, color: GRAY600 }}>{label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Top recommended vs top sold */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+              <div style={{ background: 'white', border: `1px solid ${GRAY200}`, borderRadius: 14, padding: '20px 22px' }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: GRAY600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 14 }}>Mest anbefalte produkter</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {stats.topRecommended.map(({ product, count, hitRate }) => (
+                    <div key={product} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 13, color: SLATE, fontWeight: 500, marginBottom: 3 }}>{product}</div>
+                        <div style={{ height: 4, borderRadius: 99, background: GRAY100, overflow: 'hidden' }}>
+                          <div style={{ width: `${hitRate}%`, height: '100%', background: hitRate >= 50 ? '#16A34A' : hitRate >= 25 ? '#D97706' : '#DC2626', borderRadius: 99 }} />
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                        <div style={{ fontSize: 11, color: GRAY400 }}>{count}× anbefalt</div>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: hitRate >= 50 ? '#16A34A' : hitRate >= 25 ? '#D97706' : '#DC2626' }}>{hitRate}% treff</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ background: 'white', border: `1px solid ${GRAY200}`, borderRadius: 14, padding: '20px 22px' }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: GRAY600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 14 }}>Mest solgte produkter</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {stats.topSold.map(({ product, count }, i) => (
+                    <div key={product} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <span style={{ width: 20, height: 20, borderRadius: '50%', background: i === 0 ? '#16A34A' : i === 1 ? '#D97706' : GRAY200, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: i < 2 ? 'white' : GRAY600, flexShrink: 0 }}>{i + 1}</span>
+                      <span style={{ flex: 1, fontSize: 13, color: SLATE, fontWeight: 500 }}>{product}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: '#16A34A' }}>{count}× solgt</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Divergent pairs */}
+            {stats.divergent.length > 0 && (
+              <div style={{ background: 'white', border: `1px solid ${GRAY200}`, borderRadius: 14, padding: '20px 22px' }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: SLATE, marginBottom: 4 }}>Hvor selgerne avviker fra anbefalingen</div>
+                <div style={{ fontSize: 12, color: GRAY400, marginBottom: 14 }}>Disse produktparene dukker oftest opp: anbefalt X → selgeren solgte Y. Kan signalisere at NBA-modellen mangler noe, eller at selgeren vet noe AI ikke vet ennå.</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {stats.divergent.map(({ recommended, sold, count }, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: '#FFF7ED', border: `1px solid #FED7AA`, borderRadius: 10 }}>
+                      <span style={{ fontSize: 13, color: '#92400E', flex: 1 }}>
+                        <strong>{recommended}</strong>
+                        <span style={{ margin: '0 8px', color: '#D97706' }}>→</span>
+                        {sold}
+                      </span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: '#D97706', flexShrink: 0 }}>{count} ganger</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}
+
+// ─── Insights Page ─────────────────────────────────────────────────────────────
 function InsightsPage({ onBack }: { user: HubUser; onBack: () => void }) {
   const [report, setReport] = useState<InsightsReport | null>(null);
   const [loading, setLoading] = useState(false);
@@ -1069,9 +1276,6 @@ function InsightsPage({ onBack }: { user: HubUser; onBack: () => void }) {
           </div>
         )}
 
-        {/* NBA performance report — always visible */}
-        <NBAReport />
-
       </main>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
@@ -1079,7 +1283,7 @@ function InsightsPage({ onBack }: { user: HubUser; onBack: () => void }) {
 }
 
 // ─── App Root ─────────────────────────────────────────────────────────────────
-type Screen = 'login' | 'dashboard' | 'admin' | 'insights';
+type Screen = 'login' | 'dashboard' | 'admin' | 'insights' | 'nba';
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>(() => getSession() ? 'dashboard' : 'login');
@@ -1099,5 +1303,6 @@ export default function App() {
   if (!user) return <LoginPage onLogin={handleLogin} />;
   if (screen === 'admin') return <AdminPanel currentUser={user} onBack={() => setScreen('dashboard')} />;
   if (screen === 'insights') return <InsightsPage user={user} onBack={() => setScreen('dashboard')} />;
-  return <Dashboard user={user} stats={stats} onAdmin={() => setScreen('admin')} onLogout={handleLogout} onInsights={() => setScreen('insights')} />;
+  if (screen === 'nba') return <NBAPage user={user} onBack={() => setScreen('dashboard')} />;
+  return <Dashboard user={user} stats={stats} onAdmin={() => setScreen('admin')} onLogout={handleLogout} onInsights={() => setScreen('insights')} onNBA={() => setScreen('nba')} />;
 }
