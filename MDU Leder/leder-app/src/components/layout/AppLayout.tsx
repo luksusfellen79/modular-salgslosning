@@ -1,4 +1,5 @@
 import { AppSidebar } from './AppSidebar';
+import { Sidekick } from '@/components/Sidekick';
 
 function getSessionUser(): { name: string; role: string } {
   try {
@@ -34,6 +35,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         </header>
         <main className="flex-1 overflow-auto">{children}</main>
       </div>
+      <Sidekick mode="leder" />
     </div>
   );
 }

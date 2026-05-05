@@ -1,6 +1,7 @@
 import { ReactNode } from 'react';
 import { AppSidebar } from './AppSidebar';
 import { TopBar } from './TopBar';
+import { Sidekick } from '@/components/Sidekick';
 
 export function AppLayout({ children }: { children: ReactNode }) {
   return (
@@ -10,6 +11,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
         <TopBar />
         <main className="flex-1 overflow-hidden">{children}</main>
       </div>
+      <Sidekick mode="seller" />
     </div>
   );
 }
