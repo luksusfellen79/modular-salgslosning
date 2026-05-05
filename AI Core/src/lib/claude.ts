@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { Resident } from './kasCore.js';
-import type { NBAOutcome, NBARecommendation } from './types.js';
+import type { NBAOutcome, NBARecommendation, MDUDealContext } from './types.js';
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -82,6 +82,56 @@ Svar KUN med gyldig JSON i dette formatet (ingen tekst rundt):
     .join('');
 
   // Strip any markdown code fences
+  const json = text.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
+  return JSON.parse(json) as NBARecommendation;
+}
+
+export async function getMDURecommendation(deal: MDUDealContext): Promise<NBARecommendation> {
+  const packageList = deal.packages
+    .map(p => `- ${p.name} (tier ${p.tier}): ${p.monthlyPrice} kr/mnd per enhet — ${p.description ?? ''}`)
+    .join('\n');
+
+  const prompt = `Du er et Next Best Action-system for Telenor B2B-selgere som jobber med MDU-salg til borettslag og sameier.
+
+Analyser denne dealen og anbefal den BESTE pakken å presentere, og hvilken vinkel selger bør bruke.
+
+== DEAL ==
+Borettslag/Sameie: ${deal.accountName}
+Antall enheter: ${deal.units}
+Salgsfase: ${deal.stage}
+Estimert årsverdi: ${deal.estimatedAnnualValue ? deal.estimatedAnnualValue.toLocaleString('nb-NO') + ' kr' : 'ukjent'}
+Kontaktperson: ${deal.contactName ?? 'ukjent'}
+
+== TILGJENGELIGE PAKKER ==
+${packageList}
+
+== TIDLIGERE UTFALL FOR DENNE DEALEN ==
+${deal.previousOutcome ?? 'Ingen tidligere tilbud sendt.'}
+
+Vurder: størrelse på bygget (${deal.units} enheter), salgsfase ("${deal.stage}"), og verdipotensial.
+Store bygg (50+) trenger gjerne mer robust pakke. Tidlig fase → enkel pakke for å senke terskelen.
+
+Svar KUN med gyldig JSON i dette formatet (ingen tekst rundt):
+{
+  "product": "pakkenavn",
+  "campaign": "tier (S/M/L/XL)",
+  "extras": ["produkt å fremheve 1", "produkt å fremheve 2"],
+  "headline": "pitch-overskrift maks 8 ord på norsk",
+  "reason": "selger-vendt forklaring på 2 setninger — hvorfor akkurat denne pakken til dette bygget",
+  "confidence": "high | medium | low"
+}`;
+
+  const message = await client.messages.create({
+    model: 'claude-opus-4-6',
+    max_tokens: 512,
+    messages: [{ role: 'user', content: prompt }],
+  });
+
+  const text = message.content
+    .filter(b => b.type === 'text')
+    .map(b => (b as { type: 'text'; text: string }).text)
+    .join('');
+
   const json = text.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
   return JSON.parse(json) as NBARecommendation;
 }

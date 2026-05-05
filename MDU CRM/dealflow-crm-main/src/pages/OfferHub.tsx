@@ -3,9 +3,10 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { OfferPackage, OfferProduct } from '@/data/offerHubData';
 import { Opportunity } from '@/data/mockData';
 import { OfferPackageCard, OfferProductCard } from '@/components/offerhub/OfferProductCard';
-import { Send, Copy, CheckCheck, Flag, ArrowLeft, Loader2 } from 'lucide-react';
+import { Send, Copy, CheckCheck, Flag, ArrowLeft, Loader2, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AppLayout } from '@/components/layout/AppLayout';
+import { fetchMDUNBA, NBARecommendation } from '@/lib/nba';
 import {
   fetchOpportunities,
   SalesCoreOpportunity,
@@ -112,8 +113,33 @@ export default function OfferHubPage() {
   const [sentToWarRoom, setSentToWarRoom] = useState(false);
   const [activeTab, setActiveTab] = useState<'products' | 'preview'>('products');
   const [isSending, setIsSending] = useState(false);
+  const [nbaRec, setNbaRec] = useState<NBARecommendation | null>(null);
+  const [nbaLoading, setNbaLoading] = useState(false);
 
   useSalesCoreSSE();
+
+  // Fetch NBA recommendation when deal + packages are ready
+  useEffect(() => {
+    if (!deal || offerPackages.length === 0) return;
+    setNbaLoading(true);
+    fetchMDUNBA({
+      opportunityId: deal.id,
+      accountName: deal.accountName,
+      units: deal.units,
+      stage: deal.stage,
+      estimatedAnnualValue: deal.value,
+      contactName: deal.contactName,
+      packages: offerPackages.map(p => ({
+        id: p.id,
+        name: p.name,
+        tier: p.tier,
+        monthlyPrice: p.monthlyPrice,
+      })),
+    })
+      .then(setNbaRec)
+      .catch(() => setNbaRec(null))
+      .finally(() => setNbaLoading(false));
+  }, [deal?.id, offerPackages.length]);
 
   // Hent MDU-produktkatalog fra KAS Core
   useEffect(() => {
@@ -450,6 +476,45 @@ export default function OfferHubPage() {
 
           {/* RIGHT: Offer Summary */}
           <div className="col-span-4 space-y-5">
+            {/* NBA Card */}
+            {(nbaLoading || nbaRec) && (
+              <div className="rounded-xl border bg-card overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-2.5 border-b bg-primary/5">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-3.5 h-3.5 text-primary" />
+                    <span className="text-[10px] font-bold text-primary uppercase tracking-widest">AI-anbefaling</span>
+                  </div>
+                  {nbaRec && (
+                    <span className={cn(
+                      'text-[10px] font-bold px-2 py-0.5 rounded-full',
+                      nbaRec.confidence === 'high' ? 'bg-green-100 text-green-700' :
+                      nbaRec.confidence === 'medium' ? 'bg-amber-100 text-amber-700' :
+                      'bg-gray-100 text-gray-500'
+                    )}>
+                      {nbaRec.confidence === 'high' ? 'Høy sikkerhet' : nbaRec.confidence === 'medium' ? 'Medium' : 'Lav sikkerhet'}
+                    </span>
+                  )}
+                </div>
+                {nbaLoading ? (
+                  <div className="px-4 py-3 flex items-center gap-2 text-muted-foreground">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span className="text-xs">AI analyserer dealen…</span>
+                  </div>
+                ) : nbaRec ? (
+                  <div className="px-4 py-3 space-y-2">
+                    <p className="text-sm font-bold text-foreground">{nbaRec.headline}</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      <span className="bg-primary text-primary-foreground text-xs font-semibold px-2.5 py-1 rounded-full">{nbaRec.product}</span>
+                      {nbaRec.extras.map(e => (
+                        <span key={e} className="bg-primary/10 text-primary text-xs font-semibold px-2.5 py-1 rounded-full">{e}</span>
+                      ))}
+                    </div>
+                    <p className="text-xs text-muted-foreground leading-relaxed">{nbaRec.reason}</p>
+                  </div>
+                ) : null}
+              </div>
+            )}
+
             <div className="rounded-xl border bg-card p-5">
               <h3 className="font-bold text-foreground mb-4">Tilbudsdetaljer</h3>
 

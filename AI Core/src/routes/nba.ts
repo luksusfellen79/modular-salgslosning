@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { fetchResidentsForBuilding } from '../lib/kasCore.js';
-import { getSDURecommendation } from '../lib/claude.js';
-import type { NBAOutcome } from '../lib/types.js';
+import { getSDURecommendation, getMDURecommendation } from '../lib/claude.js';
+import type { NBAOutcome, MDUDealContext } from '../lib/types.js';
 
 export const nbaRouter = Router();
 
@@ -40,6 +40,22 @@ nbaRouter.get('/sdu/:unitId', async (req, res) => {
   } catch (err) {
     console.error('NBA SDU error:', err);
     res.status(500).json({ error: 'Failed to generate recommendation' });
+  }
+});
+
+// POST /nba/mdu — MDU Next Best Action for a deal/opportunity
+nbaRouter.post('/mdu', async (req, res) => {
+  const deal = req.body as MDUDealContext;
+  if (!deal?.opportunityId || !deal?.accountName) {
+    res.status(400).json({ error: 'opportunityId and accountName required' });
+    return;
+  }
+  try {
+    const recommendation = await getMDURecommendation(deal);
+    res.json(recommendation);
+  } catch (err) {
+    console.error('NBA MDU error:', err);
+    res.status(500).json({ error: 'Failed to generate MDU recommendation' });
   }
 });
 

@@ -1,3 +1,5 @@
+const AI_BASE = (import.meta.env.VITE_AI_CORE_URL as string | undefined) ?? 'http://localhost:3000';
+
 export interface NBARecommendation {
   product: string;
   campaign: string;
@@ -24,13 +26,12 @@ export interface MDUDealContext {
   }>;
 }
 
-export interface NBAOutcome {
-  unitId: string;
-  buildingId: string;
-  recommendedProduct: string;
-  recommendedCampaign: string;
-  actualOutcome: 'sold' | 'rejected' | 'no_answer' | 'followup' | 'marketing';
-  actualProducts: string[];
-  hitRecommendation: boolean; // did they sell what was recommended?
-  loggedAt: string;
+export async function fetchMDUNBA(context: MDUDealContext): Promise<NBARecommendation> {
+  const res = await fetch(`${AI_BASE}/nba/mdu`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(context),
+  });
+  if (!res.ok) throw new Error(`AI Core MDU NBA: ${res.status}`);
+  return res.json() as Promise<NBARecommendation>;
 }
