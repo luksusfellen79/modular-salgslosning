@@ -21,7 +21,7 @@ import { createCustomersRouter } from './api/customers.js';
 import { createPricingRouter } from './api/pricing.js';
 import { HealthResponse } from './types/domain.js';
 
-const PORT = parseInt(process.env.INTEGRATION_PORT ?? '3010', 10);
+const PORT = parseInt(process.env.PORT ?? process.env.INTEGRATION_PORT ?? '3010', 10);
 const startedAt = Date.now();
 
 // ─── Infrastruktur ────────────────────────────────────────────────────────
