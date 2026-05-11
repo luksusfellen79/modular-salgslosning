@@ -1,0 +1,1321 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Modulær Salgsløsning — Telenor PoC</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --blue-dark:  #001E3C;
+    --blue-deep:  #005A8E;
+    --blue-light: #01ACFB;
+    --green:      #00A650;
+    --amber:      #F5A623;
+    --purple:     #7B2D8B;
+    --ai:         #A855F7;
+    --white:      #FFFFFF;
+    --gray-100:   #F1F5F9;
+    --gray-200:   #E2E8F0;
+    --gray-500:   #64748B;
+    --gray-700:   #334155;
+    --gray-900:   #0F172A;
+  }
+
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: #000;
+    overflow: hidden;
+    width: 100vw;
+    height: 100vh;
+  }
+
+  .deck {
+    width: 100vw;
+    height: 100vh;
+    position: relative;
+  }
+
+  .slide {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    padding: 56px 72px;
+    opacity: 0;
+    transform: translateX(60px);
+    transition: opacity .45s ease, transform .45s ease;
+    pointer-events: none;
+  }
+  .slide.active {
+    opacity: 1;
+    transform: translateX(0);
+    pointer-events: all;
+  }
+  .slide.prev {
+    opacity: 0;
+    transform: translateX(-60px);
+  }
+
+  /* Nav */
+  #nav {
+    position: fixed;
+    bottom: 28px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    z-index: 100;
+    background: rgba(0,0,0,.35);
+    backdrop-filter: blur(8px);
+    padding: 8px 16px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,.15);
+  }
+  .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: rgba(255,255,255,.35);
+    cursor: pointer;
+    transition: all .2s;
+  }
+  .dot.active { background: #01ACFB; transform: scale(1.3); }
+
+  #counter {
+    position: fixed;
+    top: 22px;
+    right: 32px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .08em;
+    color: rgba(255,255,255,.45);
+    z-index: 100;
+  }
+
+  .arrow-btn {
+    position: fixed;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(255,255,255,.08);
+    border: 1px solid rgba(255,255,255,.15);
+    color: rgba(255,255,255,.6);
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    font-size: 18px;
+    z-index: 100;
+    transition: all .2s;
+    user-select: none;
+  }
+  .arrow-btn:hover { background: rgba(255,255,255,.18); color: #fff; }
+  #prev-btn { left: 18px; }
+  #next-btn { right: 18px; }
+
+  /* SLIDE THEMES */
+  .dark  { background: linear-gradient(135deg, #001E3C 0%, #003A66 100%); color: var(--white); }
+  .mid   { background: linear-gradient(135deg, #003055 0%, #005A8E 100%); color: var(--white); }
+  .light { background: #F8FAFC; color: var(--gray-900); }
+  .vdark { background: linear-gradient(135deg, #000D1A 0%, #001E3C 100%); color: var(--white); }
+  .aitheme { background: linear-gradient(135deg, #130A2A 0%, #1E1060 65%, #0D1A40 100%); color: var(--white); }
+  .econ  { background: linear-gradient(135deg, #000D1A 0%, #001830 60%, #001A10 100%); color: var(--white); }
+
+  /* Typography */
+  .eyebrow {
+    font-size: 11px; font-weight: 700; letter-spacing: .18em;
+    text-transform: uppercase; opacity: .5; margin-bottom: 14px;
+  }
+  h1 { font-size: clamp(38px, 5vw, 62px); font-weight: 800; line-height: 1.1; letter-spacing: -.02em; }
+  h2 { font-size: clamp(26px, 3.2vw, 40px); font-weight: 800; line-height: 1.15; letter-spacing: -.015em; }
+  h3 { font-size: 18px; font-weight: 700; line-height: 1.25; }
+  p { line-height: 1.65; }
+  .lead { font-size: 18px; line-height: 1.6; opacity: .8; }
+  .muted { opacity: .55; }
+  .accent { color: var(--blue-light); }
+  .accent-green { color: var(--green); }
+  .ai-accent { color: #C084FC; }
+
+  /* Pills */
+  .pill {
+    display: inline-block; font-size: 11px; font-weight: 700;
+    letter-spacing: .08em; padding: 4px 12px; border-radius: 999px;
+    border: 1.5px solid rgba(1,172,251,.4); color: #01ACFB;
+    background: rgba(1,172,251,.08);
+  }
+  .pill-green  { border-color: rgba(0,166,80,.4);   color: #00A650; background: rgba(0,166,80,.08); }
+  .pill-amber  { border-color: rgba(245,166,35,.4);  color: #F5A623; background: rgba(245,166,35,.08); }
+  .pill-white  { border-color: rgba(255,255,255,.25); color: rgba(255,255,255,.75); background: rgba(255,255,255,.06); }
+  .pill-ai     { border-color: rgba(168,85,247,.4);  color: #C084FC; background: rgba(168,85,247,.1); }
+
+  /* Cards */
+  .card {
+    background: rgba(255,255,255,.07);
+    border: 1px solid rgba(255,255,255,.12);
+    border-radius: 16px; padding: 24px 26px;
+  }
+  .card-light {
+    background: #fff; border: 1px solid #E2E8F0;
+    border-radius: 16px; padding: 24px 26px;
+    box-shadow: 0 2px 12px rgba(0,0,0,.06);
+  }
+  .card-ai {
+    background: rgba(168,85,247,.1);
+    border: 1px solid rgba(168,85,247,.28);
+    border-radius: 16px; padding: 24px 26px;
+  }
+  .card-light-ai {
+    background: #FDF4FF; border: 1px solid #E9D5FF;
+    border-radius: 16px; padding: 24px 26px;
+    box-shadow: 0 2px 12px rgba(168,85,247,.08);
+  }
+
+  /* Grids */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+  .grid-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px; }
+
+  /* Icon circles */
+  .icon-circle {
+    width: 44px; height: 44px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; flex-shrink: 0; margin-bottom: 12px;
+  }
+
+  /* Divider */
+  .divider { width: 48px; height: 3px; background: var(--blue-light); border-radius: 2px; margin: 20px 0; }
+
+  /* Service badge */
+  .svc-badge {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 16px;
+    background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.1);
+    border-radius: 10px; font-size: 13px; font-weight: 600;
+  }
+  .svc-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); flex-shrink: 0; box-shadow: 0 0 6px rgba(0,166,80,.7); }
+  .svc-dot-ai { width: 8px; height: 8px; border-radius: 50%; background: #A855F7; flex-shrink: 0; box-shadow: 0 0 6px rgba(168,85,247,.7); }
+
+  /* Check list */
+  .check-list { list-style: none; display: flex; flex-direction: column; gap: 12px; }
+  .check-list li {
+    display: flex; align-items: flex-start; gap: 12px;
+    font-size: 15px; line-height: 1.5;
+  }
+  .check-list li::before {
+    content: ''; width: 20px; height: 20px; border-radius: 50%;
+    background: rgba(0,166,80,.15); border: 1.5px solid rgba(0,166,80,.4);
+    flex-shrink: 0; margin-top: 2px;
+    background-image: url("data:image/svg+xml,%3Csvg width='10' height='8' viewBox='0 0 10 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 4L3.5 6.5L9 1' stroke='%2300A650' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: center;
+  }
+
+  /* Warn list */
+  .warn-list { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+  .warn-list li {
+    display: flex; align-items: flex-start; gap: 12px;
+    font-size: 14px; line-height: 1.5; color: rgba(255,255,255,.75);
+  }
+  .warn-list li::before { content: '⚠'; font-size: 13px; color: #F5A623; flex-shrink: 0; margin-top: 1px; }
+
+  /* Stat block */
+  .stat { text-align: center; }
+  .stat-num { font-size: clamp(36px, 4vw, 56px); font-weight: 800; letter-spacing: -.02em; line-height: 1; color: var(--blue-light); }
+  .stat-label { font-size: 12px; font-weight: 600; opacity: .55; margin-top: 6px; letter-spacing: .06em; text-transform: uppercase; }
+
+  /* Arch nodes */
+  .arch-node { padding: 10px 18px; border-radius: 10px; font-size: 12px; font-weight: 700; text-align: center; letter-spacing: .02em; }
+
+  /* Telenor logo */
+  .tlogo { display: flex; align-items: center; gap: 10px; }
+  .tlogo-text { font-size: 15px; font-weight: 700; letter-spacing: .04em; opacity: .6; }
+
+  /* Slide 1 specific */
+  #s1 { justify-content: center; }
+  #s1 .content { max-width: 720px; }
+
+  /* Railway placeholder */
+  .rw-placeholder {
+    border: 2px dashed rgba(1,172,251,.35); border-radius: 16px;
+    background: rgba(1,172,251,.04);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 10px; color: rgba(1,172,251,.6); font-size: 13px; font-weight: 600;
+    text-align: center; padding: 20px;
+  }
+
+  /* Agentic tile */
+  .agent-tile {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 12px;
+    background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1);
+    border-radius: 8px; font-size: 12px; font-weight: 600;
+    transition: border-color .2s;
+  }
+  .agent-tile.ai {
+    background: rgba(168,85,247,.1); border-color: rgba(168,85,247,.28);
+  }
+</style>
+</head>
+<body>
+
+<div id="counter"></div>
+<div id="prev-btn" class="arrow-btn" onclick="go(-1)">&#8592;</div>
+<div id="next-btn" class="arrow-btn" onclick="go(1)">&#8594;</div>
+
+<div class="deck" id="deck">
+
+<!-- ═══════════════════════════════════════════════════════
+     SLIDE 1 — TITTEL
+═══════════════════════════════════════════════════════ -->
+<div class="slide dark" id="s1">
+  <div style="position:absolute;inset:0;overflow:hidden;pointer-events:none;">
+    <div style="position:absolute;top:-120px;right:-120px;width:500px;height:500px;border-radius:50%;background:radial-gradient(circle,rgba(1,172,251,.15) 0%,transparent 70%);"></div>
+    <div style="position:absolute;bottom:-80px;left:-80px;width:400px;height:400px;border-radius:50%;background:radial-gradient(circle,rgba(0,90,142,.3) 0%,transparent 70%);"></div>
+    <div style="position:absolute;bottom:80px;right:180px;width:300px;height:300px;border-radius:50%;background:radial-gradient(circle,rgba(168,85,247,.08) 0%,transparent 70%);"></div>
+  </div>
+  <div class="tlogo" style="position:absolute;top:40px;left:72px;">
+    <svg width="28" height="26" viewBox="0 0 139.82 128.73"><path fill="#01ACFB" d="M70.67,39.37c2,.31,2.4-.1,2.67-2a45.17,45.17,0,0,1,3.89-12.75C79.85,19.24,84,13.33,89.85,9.36a62.78,62.78,0,0,1,19.2-8.26,46.83,46.83,0,0,1,14-.93c8.42.76,13.08,3.16,15.42,6.27A6.75,6.75,0,0,1,139.81,10c.07,1.55-.6,3.56-2.83,5.54s-6.77,4.33-13.06,6.44c-6.52,2.17-15.44,4.47-24.33,6.51a137.22,137.22,0,0,0-15.22,4.37c-5.88,2-7.65,7.85-4,9.64A54.92,54.92,0,0,1,91.82,50,101.32,101.32,0,0,1,107.08,65c5.53,6.76,14.59,19.66,17.84,32.18,3.61,13.75,1.36,26.78-6.42,30.42-7.63,3.58-17.79-1.58-24.93-9-6.78-7-11.52-15.29-16-28-3.86-11-5.42-26.87-5.42-35.19,0-2.77,0-3.36.07-5.86.26-2.18-5.62-4-11.94.08-7.19,4.63-14.23,13-18.39,17.88-1.81,2.13-4.27,5.25-6.86,8.52-3.43,4.3-7.21,8.78-10.66,11.28C19.2,91,10.87,92.6,5,88.44c-3.25-2.32-5-6.7-5-11.16a16.91,16.91,0,0,1,2.3-8.77c2-3.43,5.17-7.12,10.28-11.34A90.51,90.51,0,0,1,34.73,44.54c12.88-5.19,26.75-6.82,35.94-5.17Z"/></svg>
+    <span class="tlogo-text">Telenor</span>
+  </div>
+  <div class="content" style="position:relative;z-index:1;">
+    <span class="pill">Proof of Concept · 2026</span>
+    <div style="height:24px;"></div>
+    <h1>Modulær<br><span class="accent">Salgsløsning</span></h1>
+    <div style="height:24px;"></div>
+    <p class="lead" style="max-width:560px;opacity:.75;">En komplett, skybasert salgsplattform bygget fra bunnen av — med mikrotjenester, gateway-arkitektur, AI-lag og moderne frontend-apper for feltselgere og ledelse.</p>
+    <div style="height:36px;"></div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;">
+      <span class="pill">13 tjenester</span>
+      <span class="pill">Railway · Hosted</span>
+      <span class="pill">TypeScript end-to-end</span>
+      <span class="pill-ai pill">AI-drevet</span>
+      <span class="pill">Erstatter Salesforce</span>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     SLIDE 2 — HVA VI HAR BYGGET
+═══════════════════════════════════════════════════════ -->
+<div class="slide dark" id="s2">
+  <div class="eyebrow accent">Oversikt</div>
+  <h2>Hva vi har bygget</h2>
+  <div class="divider"></div>
+
+  <!-- Integration Layer — fremhevet -->
+  <div style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:rgba(245,166,35,.7);margin-bottom:8px;">✦ Nytt — Integration Layer</div>
+  <div style="margin-bottom:12px;">
+    <div class="card" style="padding:14px 18px;border-color:rgba(245,166,35,.35);background:rgba(245,166,35,.06);display:flex;align-items:flex-start;gap:16px;">
+      <div style="font-size:28px;flex-shrink:0;">🔌</div>
+      <div style="flex:1;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:5px;">
+          <h3 style="color:#F5A623;font-size:14px;">Integration Layer</h3>
+          <span class="pill pill-amber" style="font-size:10px;">Ny arkitektur</span>
+        </div>
+        <p style="font-size:12px;opacity:.75;line-height:1.55;">Aggregerer data fra alle kilde-systemer (Fiber, Mobil, TV, Pris) via adapter-mønster. Kafka-klar for produksjon. Eksponerer ett rent API til Gateway og mikrotjenestene — ingen app trenger å vite hvilke systemer som lever bak.</p>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:5px;flex-shrink:0;min-width:160px;">
+        <div style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.4;margin-bottom:3px;">Adaptere</div>
+        <span style="font-size:11px;padding:3px 8px;background:rgba(1,172,251,.1);border-radius:5px;color:#01ACFB;font-weight:600;">🌐 Fiber-system</span>
+        <span style="font-size:11px;padding:3px 8px;background:rgba(123,45,139,.12);border-radius:5px;color:#C084FC;font-weight:600;">📱 Mobil-system</span>
+        <span style="font-size:11px;padding:3px 8px;background:rgba(0,166,80,.1);border-radius:5px;color:#00A650;font-weight:600;">📺 TV-system</span>
+        <span style="font-size:11px;padding:3px 8px;background:rgba(245,166,35,.1);border-radius:5px;color:#F5A623;font-weight:600;">💰 Pris-system</span>
+        <span style="font-size:11px;padding:3px 8px;background:rgba(255,255,255,.07);border-radius:5px;opacity:.6;font-weight:600;">📨 Kafka (stub→prod)</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Core services -->
+  <div style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;opacity:.35;margin-bottom:8px;">Kjernetjenester</div>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px;">
+    <div class="card" style="padding:14px 16px;">
+      <div style="font-size:22px;margin-bottom:7px;">🏗️</div>
+      <h3 style="color:#01ACFB;font-size:13px;margin-bottom:4px;">KAS Core</h3>
+      <p style="font-size:12px;opacity:.65;line-height:1.5;">Kunde-adapter i Integration Layer. Beboer- og bygningsdata.</p>
+    </div>
+    <div class="card" style="padding:14px 16px;">
+      <div style="font-size:22px;margin-bottom:7px;">📋</div>
+      <h3 style="color:#01ACFB;font-size:13px;margin-bottom:4px;">Sales Core</h3>
+      <p style="font-size:12px;opacity:.65;line-height:1.5;">Rundestyring, selgerregister og besøkslogging.</p>
+    </div>
+    <div class="card" style="padding:14px 16px;">
+      <div style="font-size:22px;margin-bottom:7px;">📱</div>
+      <h3 style="color:#01ACFB;font-size:13px;margin-bottom:4px;">SDU CRM</h3>
+      <p style="font-size:12px;opacity:.65;line-height:1.5;">Feltselger-app med 3-stegs ordreflyt.</p>
+    </div>
+    <div class="card" style="padding:14px 16px;">
+      <div style="font-size:22px;margin-bottom:7px;">🏢</div>
+      <h3 style="color:#01ACFB;font-size:13px;margin-bottom:4px;">MDU CRM</h3>
+      <p style="font-size:12px;opacity:.65;line-height:1.5;">Salgs-CRM for borettslag med pipeline-visning.</p>
+    </div>
+    <div class="card" style="padding:14px 16px;">
+      <div style="font-size:22px;margin-bottom:7px;">📊</div>
+      <h3 style="color:#01ACFB;font-size:13px;margin-bottom:4px;">MDU Leder</h3>
+      <p style="font-size:12px;opacity:.65;line-height:1.5;">Ledelses­dashboard med nøkkeltall og team-oversikt.</p>
+    </div>
+    <div class="card" style="padding:14px 16px;">
+      <div style="font-size:22px;margin-bottom:7px;">🚀</div>
+      <h3 style="color:#01ACFB;font-size:13px;margin-bottom:4px;">Salgs Hub</h3>
+      <p style="font-size:12px;opacity:.65;line-height:1.5;">Gateway og SSO-inngang for alle brukere.</p>
+    </div>
+    <div class="card" style="padding:14px 16px;">
+      <div style="font-size:22px;margin-bottom:7px;">🎯</div>
+      <h3 style="color:#01ACFB;font-size:13px;margin-bottom:4px;">SDU Incentives</h3>
+      <p style="font-size:12px;opacity:.65;line-height:1.5;">Kampanje­admin og provisjons­håndtering.</p>
+    </div>
+    <div class="card" style="padding:14px 16px;">
+      <div style="font-size:22px;margin-bottom:7px;">🗺️</div>
+      <h3 style="color:#01ACFB;font-size:13px;margin-bottom:4px;">SDU Planner</h3>
+      <p style="font-size:12px;opacity:.65;line-height:1.5;">Rute­planlegger for tildeling av runder.</p>
+    </div>
+    <div class="card" style="padding:14px 16px;">
+      <div style="font-size:22px;margin-bottom:7px;">⚙️</div>
+      <h3 style="color:#01ACFB;font-size:13px;margin-bottom:4px;">Workflow</h3>
+      <p style="font-size:12px;opacity:.65;line-height:1.5;">Event-drevet automatiserings­motor.</p>
+    </div>
+  </div>
+
+  <!-- AI layer -->
+  <div style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:rgba(192,132,252,.6);margin-bottom:8px;">✦ AI-lag</div>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
+    <div class="card-ai" style="padding:14px 16px;">
+      <div style="font-size:22px;margin-bottom:7px;">🧠</div>
+      <h3 style="color:#C084FC;font-size:13px;margin-bottom:4px;">AI Core</h3>
+      <p style="font-size:12px;opacity:.75;line-height:1.5;">NBA-anbefaling, Sidekick API og innsikts­analyse.</p>
+    </div>
+    <div class="card-ai" style="padding:14px 16px;">
+      <div style="font-size:22px;margin-bottom:7px;">💬</div>
+      <h3 style="color:#C084FC;font-size:13px;margin-bottom:4px;">AI Sidekick</h3>
+      <p style="font-size:12px;opacity:.75;line-height:1.5;">Kontekst­bevisst chatbot i MDU CRM og MDU Leder.</p>
+    </div>
+    <div class="card-ai" style="padding:14px 16px;">
+      <div style="font-size:22px;margin-bottom:7px;">🔍</div>
+      <h3 style="color:#C084FC;font-size:13px;margin-bottom:4px;">Hub Agenter</h3>
+      <p style="font-size:12px;opacity:.75;line-height:1.5;">Innsikts­agent og NBA-agent analyserer salg på tvers av kanaler.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     SLIDE 3 — ARKITEKTUR
+═══════════════════════════════════════════════════════ -->
+<div class="slide vdark" id="s3">
+  <div class="eyebrow accent">Systemarkitektur</div>
+  <h2>Slik henger det sammen</h2>
+  <div class="divider"></div>
+
+  <div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:12px;">
+
+    <div style="text-align:center;">
+      <div style="font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;opacity:.4;margin-bottom:10px;">Brukerlag</div>
+      <div style="display:flex;justify-content:center;gap:10px;flex-wrap:wrap;">
+        <div class="arch-node" style="background:rgba(1,172,251,.15);border:1px solid rgba(1,172,251,.3);color:#01ACFB;">📱 SDU CRM</div>
+        <div class="arch-node" style="background:rgba(1,172,251,.15);border:1px solid rgba(1,172,251,.3);color:#01ACFB;">🏢 MDU CRM</div>
+        <div class="arch-node" style="background:rgba(1,172,251,.15);border:1px solid rgba(1,172,251,.3);color:#01ACFB;">📊 MDU Leder</div>
+        <div class="arch-node" style="background:rgba(1,172,251,.15);border:1px solid rgba(1,172,251,.3);color:#01ACFB;">🎯 SDU Incentives</div>
+        <div class="arch-node" style="background:rgba(1,172,251,.15);border:1px solid rgba(1,172,251,.3);color:#01ACFB;">🗺️ SDU Planner</div>
+      </div>
+    </div>
+
+    <div style="text-align:center;font-size:16px;opacity:.35;">↕</div>
+
+    <div style="text-align:center;">
+      <div style="font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;opacity:.4;margin-bottom:10px;">Gateway / Portal</div>
+      <div style="display:flex;justify-content:center;">
+        <div class="arch-node" style="background:rgba(245,166,35,.15);border:2px solid rgba(245,166,35,.4);color:#F5A623;font-size:14px;padding:12px 32px;">🚀 Salgs Hub — SSO + App-lansering</div>
+      </div>
+    </div>
+
+    <div style="text-align:center;font-size:16px;opacity:.35;">↕</div>
+
+    <div style="text-align:center;">
+      <div style="font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:rgba(245,166,35,.6);margin-bottom:10px;">✦ Integration Layer — ny</div>
+      <div style="display:flex;justify-content:center;">
+        <div class="arch-node" style="background:rgba(245,166,35,.12);border:2px solid rgba(245,166,35,.45);color:#F5A623;font-size:14px;padding:12px 28px;max-width:600px;width:100%;">
+          🔌 Integration Layer<br>
+          <span style="font-size:10px;opacity:.7;font-weight:400;">Fiber · Mobil · TV · Pris · Kafka — adapter-mønster, én API-flate</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="text-align:center;font-size:16px;opacity:.35;">↕</div>
+
+    <div style="text-align:center;">
+      <div style="font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;opacity:.4;margin-bottom:10px;">Backend-tjenester</div>
+      <div style="display:flex;justify-content:center;gap:10px;flex-wrap:wrap;">
+        <div class="arch-node" style="background:rgba(0,166,80,.15);border:2px solid rgba(0,166,80,.4);color:#00A650;padding:12px 20px;">🏗️ KAS Core<br><span style="font-size:10px;opacity:.7;font-weight:400;">Kunde-adapter</span></div>
+        <div class="arch-node" style="background:rgba(0,166,80,.15);border:2px solid rgba(0,166,80,.4);color:#00A650;padding:12px 20px;">📋 Sales Core<br><span style="font-size:10px;opacity:.7;font-weight:400;">Runder & logging</span></div>
+        <div class="arch-node" style="background:rgba(123,45,139,.2);border:1px solid rgba(123,45,139,.4);color:#C084FC;padding:12px 20px;">⚙️ Workflow<br><span style="font-size:10px;opacity:.7;font-weight:400;">Automatisering</span></div>
+        <div class="arch-node" style="background:rgba(168,85,247,.15);border:2px solid rgba(168,85,247,.4);color:#C084FC;padding:12px 20px;">🧠 AI Core<br><span style="font-size:10px;opacity:.7;font-weight:400;">NBA · Sidekick · Innsikt</span></div>
+      </div>
+    </div>
+
+    <div style="text-align:center;margin-top:8px;">
+      <span class="pill-white pill" style="font-size:11px;">Alt kommuniserer via REST API · TypeScript end-to-end · Kafka-klar · AI-lag integrert</span>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     SLIDE 4 — KAS CORE + SALES CORE
+═══════════════════════════════════════════════════════ -->
+<div class="slide light" id="s4">
+  <div class="eyebrow" style="color:var(--blue-deep);opacity:.5;">Tjeneste 1 &amp; 2 av 12</div>
+  <div style="display:flex;align-items:center;gap:16px;margin-bottom:8px;">
+    <h2 style="color:var(--gray-900);">KAS Core &amp; Sales Core</h2>
+    <span class="pill">Backend · Node.js · TypeScript</span>
+  </div>
+  <div class="divider" style="background:var(--blue-deep);"></div>
+
+  <div class="grid-2" style="flex:1;margin-top:4px;">
+    <!-- KAS Core -->
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font-size:28px;">🏗️</span>
+        <h3 style="color:var(--blue-deep);">KAS Core</h3>
+        <span class="pill" style="font-size:10px;">Kilde til sannhet</span>
+      </div>
+      <div class="card-light">
+        <h3 style="font-size:13px;color:var(--blue-deep);margin-bottom:8px;">🎯 Ansvar</h3>
+        <ul class="check-list" style="gap:8px;">
+          <li style="font-size:13px;">Master-API for alle kunder og prospekter</li>
+          <li style="font-size:13px;">Produktkatalog — SDU og MDU pakker</li>
+          <li style="font-size:13px;">Kampanjebibliotek med prislogikk</li>
+          <li style="font-size:13px;">Interessescore-beregning per beboer</li>
+        </ul>
+      </div>
+      <div class="card-light" style="border-left:4px solid var(--green);">
+        <h3 style="font-size:13px;color:var(--green);margin-bottom:6px;">Nøkkelpunkt</h3>
+        <p style="font-size:13px;color:var(--gray-700);line-height:1.55;">Endrer du en kampanjepris i KAS Core er det oppdatert i alle apper umiddelbart — ingen frontend-deploy nødvendig.</p>
+      </div>
+    </div>
+    <!-- Sales Core -->
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font-size:28px;">📋</span>
+        <h3 style="color:var(--blue-deep);">Sales Core</h3>
+        <span class="pill" style="font-size:10px;">Selgerregister</span>
+      </div>
+      <div class="card-light">
+        <h3 style="font-size:13px;color:var(--blue-deep);margin-bottom:8px;">🎯 Ansvar</h3>
+        <ul class="check-list" style="gap:8px;">
+          <li style="font-size:13px;">Selgerregister med roller og tilganger</li>
+          <li style="font-size:13px;">Rundeplanlegging og tildeling</li>
+          <li style="font-size:13px;">Besøksstatus per enhet (pending → sold)</li>
+          <li style="font-size:13px;">Statistikk: konvertering og effektivitet</li>
+        </ul>
+      </div>
+      <div class="card-light" style="border-left:4px solid var(--blue-deep);">
+        <h3 style="font-size:13px;color:var(--blue-deep);margin-bottom:6px;">Separasjon av ansvar</h3>
+        <p style="font-size:13px;color:var(--gray-700);line-height:1.55;">Sales Core håndterer <em>hvem som selger hva og når</em>. KAS Core håndterer <em>hvem kunden er og hvilke produkter som finnes</em>.</p>
+      </div>
+      <div class="card-light" style="border-left:4px solid var(--amber);">
+        <h3 style="font-size:13px;color:#B45309;margin-bottom:6px;">Besøksflyt</h3>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:4px;">
+          <span style="font-size:11px;padding:3px 8px;background:#F1F5F9;border-radius:5px;font-weight:600;color:var(--gray-700);">pending</span>
+          <span style="opacity:.4;">→</span>
+          <span style="font-size:11px;padding:3px 8px;background:#FFF8E6;border-radius:5px;font-weight:600;color:#B45309;">visited</span>
+          <span style="opacity:.4;">→</span>
+          <span style="font-size:11px;padding:3px 8px;background:#E6F6ED;border-radius:5px;font-weight:600;color:var(--green);">sold</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     SLIDE 5 — SDU CRM + MDU CRM
+═══════════════════════════════════════════════════════ -->
+<div class="slide light" id="s5">
+  <div class="eyebrow" style="color:var(--blue-deep);opacity:.5;">Tjeneste 3 &amp; 4 av 12</div>
+  <div style="display:flex;align-items:center;gap:16px;margin-bottom:8px;">
+    <h2 style="color:var(--gray-900);">SDU CRM &amp; MDU CRM</h2>
+    <span class="pill">React · Vite · TypeScript · Tailwind</span>
+  </div>
+  <div class="divider" style="background:var(--blue-deep);"></div>
+
+  <div class="grid-2" style="flex:1;margin-top:4px;">
+    <!-- SDU CRM -->
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font-size:28px;">📱</span>
+        <h3 style="color:var(--blue-deep);">SDU CRM — Feltsalg</h3>
+      </div>
+      <div class="card-light">
+        <ul class="check-list" style="gap:8px;">
+          <li style="font-size:13px;">Mobilvennlig feltselger-app</li>
+          <li style="font-size:13px;">Auto-login via Hub-sesjon</li>
+          <li style="font-size:13px;">Interessescore og kundehistorikk per dør</li>
+          <li style="font-size:13px;">NBA-anbefaling fra AI Core</li>
+        </ul>
+      </div>
+      <div class="card-light" style="border-left:4px solid var(--green);">
+        <h3 style="font-size:13px;color:var(--green);margin-bottom:8px;">3-stegs ordreflyt</h3>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <div style="flex:1;text-align:center;padding:8px;background:#F0FDF4;border-radius:8px;border:1.5px solid rgba(0,166,80,.2);">
+            <div style="font-size:16px;">🛒</div>
+            <div style="font-size:10px;font-weight:700;color:var(--green);margin-top:3px;">Produkter</div>
+          </div>
+          <div style="color:var(--gray-300);font-size:14px;">→</div>
+          <div style="flex:1;text-align:center;padding:8px;background:#EFF6FF;border-radius:8px;border:1.5px solid rgba(0,90,142,.2);">
+            <div style="font-size:16px;">📋</div>
+            <div style="font-size:10px;font-weight:700;color:var(--blue-deep);margin-top:3px;">Sammendrag</div>
+          </div>
+          <div style="color:var(--gray-300);font-size:14px;">→</div>
+          <div style="flex:1;text-align:center;padding:8px;background:#F0FDF4;border-radius:8px;border:1.5px solid rgba(0,166,80,.2);">
+            <div style="font-size:16px;">🤝</div>
+            <div style="font-size:10px;font-weight:700;color:var(--green);margin-top:3px;">Aksept</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- MDU CRM -->
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font-size:28px;">🏢</span>
+        <h3 style="color:var(--blue-deep);">MDU CRM</h3>
+      </div>
+      <div class="card-light">
+        <ul class="check-list" style="gap:8px;">
+          <li style="font-size:13px;">Pipeline med drag-and-drop</li>
+          <li style="font-size:13px;">Tilbuds­bygging med MDU-pakker</li>
+          <li style="font-size:13px;">Tilbuds­sporing: åpnet, sett, akseptert</li>
+          <li style="font-size:13px;">AI Sidekick for deal-innsikt</li>
+        </ul>
+      </div>
+      <div class="card-light" style="border-left:4px solid var(--blue-deep);">
+        <h3 style="font-size:13px;color:var(--blue-deep);margin-bottom:6px;">Pipeline-stadier</h3>
+        <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:6px;">
+          <span style="font-size:10px;padding:3px 8px;background:#F1F5F9;border-radius:5px;font-weight:600;color:var(--gray-700);">Prospekt</span>
+          <span style="opacity:.4;font-size:12px;">→</span>
+          <span style="font-size:10px;padding:3px 8px;background:#EFF6FF;border-radius:5px;font-weight:600;color:var(--blue-deep);">Tilbud sendt</span>
+          <span style="opacity:.4;font-size:12px;">→</span>
+          <span style="font-size:10px;padding:3px 8px;background:#FFF8E6;border-radius:5px;font-weight:600;color:#B45309;">Forhandling</span>
+          <span style="opacity:.4;font-size:12px;">→</span>
+          <span style="font-size:10px;padding:3px 8px;background:#E6F6ED;border-radius:5px;font-weight:600;color:var(--green);">Signert</span>
+        </div>
+      </div>
+      <div class="card-light" style="border-left:4px solid var(--green);">
+        <h3 style="font-size:13px;color:var(--green);margin-bottom:4px;">Åpningssporing</h3>
+        <p style="font-size:12px;color:var(--gray-700);line-height:1.5;">Selger ser når og hvor mange ganger tilbudet er åpnet — riktig timing for oppfølging.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     SLIDE 6 — MDU LEDER + SALGS HUB
+═══════════════════════════════════════════════════════ -->
+<div class="slide light" id="s6">
+  <div class="eyebrow" style="color:var(--blue-deep);opacity:.5;">Tjeneste 5 &amp; 6 av 12</div>
+  <h2 style="color:var(--gray-900);">MDU Leder &amp; Salgs Hub</h2>
+  <div class="divider" style="background:var(--blue-deep);"></div>
+
+  <div class="grid-2" style="flex:1;margin-top:4px;">
+    <!-- MDU Leder -->
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font-size:26px;">📊</span>
+        <h3 style="color:var(--blue-deep);">MDU Leder</h3>
+        <span class="pill" style="font-size:10px;">Ledelses­dashboard</span>
+      </div>
+      <div class="card-light">
+        <ul class="check-list">
+          <li>Nøkkeltall: pipeline-verdi, konvertering, aktivitet</li>
+          <li>Teamoversikt med status per selger</li>
+          <li>War Room — godkjenn og avvis store deals</li>
+          <li>AI Sidekick med live pipeline-kontekst</li>
+        </ul>
+      </div>
+      <div class="card-light" style="border-left:4px solid var(--blue-deep);">
+        <p style="font-size:13px;color:var(--gray-700);line-height:1.55;">Leder ser hva hvert teammedlem jobber med i sanntid, og kan justere kampanjer uten å involvere IT. AI Sidekick svarer på pipeline­spørsmål direkte fra dashboardet.</p>
+      </div>
+    </div>
+    <!-- Salgs Hub -->
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font-size:26px;">🚀</span>
+        <h3 style="color:var(--blue-deep);">Salgs Hub</h3>
+        <span class="pill pill-amber" style="font-size:10px;">Gateway</span>
+      </div>
+      <div class="card-light">
+        <ul class="check-list">
+          <li>Én innloggingsflate for alle roller</li>
+          <li>Roling­basert visning: riktig app til riktig person</li>
+          <li>SSO-sesjon videresendt som signert token</li>
+          <li>Innsikts­agent og NBA-agent for ledelsen</li>
+        </ul>
+      </div>
+      <div class="card-light" style="border-left:4px solid var(--amber);">
+        <h3 style="font-size:13px;color:#B45309;margin-bottom:6px;">Gateway-mønsteret</h3>
+        <p style="font-size:13px;color:var(--gray-700);line-height:1.55;">Salgs Hub er den eneste appen brukeren trenger å huske. Den distribuerer sesjonen til alle andre apper — og hoster AI-agentene.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     SLIDE 7 — SDU INCENTIVES + PLANNER + WORKFLOW
+═══════════════════════════════════════════════════════ -->
+<div class="slide light" id="s7">
+  <div class="eyebrow" style="color:var(--blue-deep);opacity:.5;">Tjeneste 7, 8 &amp; 9 av 12</div>
+  <h2 style="color:var(--gray-900);">SDU Incentives · SDU Planner · Workflow</h2>
+  <div class="divider" style="background:var(--blue-deep);"></div>
+
+  <div class="grid-3" style="flex:1;margin-top:4px;align-items:start;">
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font-size:26px;">🎯</span>
+        <h3 style="color:var(--blue-deep);font-size:15px;">SDU Incentives</h3>
+      </div>
+      <div class="card-light">
+        <ul class="check-list" style="gap:8px;">
+          <li style="font-size:13px;">Opprette og redigere kampanjer</li>
+          <li style="font-size:13px;">Provisjonslogikk og bonusregler</li>
+          <li style="font-size:13px;">Synlighet­kontroll per selger</li>
+          <li style="font-size:13px;">Kobling mot KAS Core produktkatalog</li>
+        </ul>
+      </div>
+      <div class="card-light" style="border-left:3px solid var(--blue-deep);">
+        <p style="font-size:12px;color:var(--gray-700);line-height:1.55;">Kampanjeansvarlig kan justere pris og bonus uten teknisk hjelp — live oppdatering i alle CRM-er.</p>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font-size:26px;">🗺️</span>
+        <h3 style="color:var(--blue-deep);font-size:15px;">SDU Planner</h3>
+      </div>
+      <div class="card-light">
+        <ul class="check-list" style="gap:8px;">
+          <li style="font-size:13px;">Definer geografiske runder/ruter</li>
+          <li style="font-size:13px;">Tildel selger til runde</li>
+          <li style="font-size:13px;">Planlegg dato og estimert varighet</li>
+          <li style="font-size:13px;">Bygger på Sales Core API</li>
+        </ul>
+      </div>
+      <div class="card-light" style="border-left:3px solid var(--blue-deep);">
+        <p style="font-size:12px;color:var(--gray-700);line-height:1.55;">Salgsleder planlegger kvelden — SDU CRM er klar til bruk for selgerne neste morgen.</p>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font-size:26px;">⚙️</span>
+        <h3 style="color:var(--blue-deep);font-size:15px;">Workflow</h3>
+      </div>
+      <div class="card-light">
+        <ul class="check-list" style="gap:8px;">
+          <li style="font-size:13px;">Event-drevet automatiserings­motor</li>
+          <li style="font-size:13px;">Trigger på salg og statusendringer</li>
+          <li style="font-size:13px;">Orkestrerer tjenester på tvers</li>
+          <li style="font-size:13px;">Grunnlag for fremtidige integrasjoner</li>
+        </ul>
+      </div>
+      <div class="card-light" style="border-left:3px solid var(--purple);">
+        <p style="font-size:12px;color:var(--gray-700);line-height:1.55;">En hendelse i én tjeneste utløser automatisk handlinger i andre — f.eks. provisjons­beregning etter salg.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     SLIDE 8 — AI-LAGET
+═══════════════════════════════════════════════════════ -->
+<div class="slide aitheme" id="s8">
+  <div style="position:absolute;inset:0;overflow:hidden;pointer-events:none;">
+    <div style="position:absolute;top:-80px;right:-80px;width:450px;height:450px;border-radius:50%;background:radial-gradient(circle,rgba(168,85,247,.18) 0%,transparent 70%);"></div>
+    <div style="position:absolute;bottom:-60px;left:-60px;width:380px;height:380px;border-radius:50%;background:radial-gradient(circle,rgba(99,102,241,.12) 0%,transparent 70%);"></div>
+  </div>
+  <div class="eyebrow ai-accent" style="position:relative;z-index:1;">AI-laget · Tjeneste 10, 11 &amp; 12 av 12</div>
+  <h2 style="position:relative;z-index:1;">Kunstig intelligens i hvert steg av salget</h2>
+  <div class="divider" style="background:#A855F7;position:relative;z-index:1;"></div>
+
+  <div class="grid-3" style="flex:1;margin-top:4px;position:relative;z-index:1;">
+
+    <!-- AI Core -->
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font-size:28px;">🧠</span>
+        <h3 style="color:#C084FC;">AI Core</h3>
+      </div>
+      <div class="card-ai">
+        <h3 style="font-size:13px;color:#C084FC;margin-bottom:8px;">Backend · Claude claude-opus-4-6</h3>
+        <ul class="check-list" style="gap:8px;">
+          <li style="font-size:13px;">NBA — Next Best Action for feltselger</li>
+          <li style="font-size:13px;">Kontekst­bevisst Sidekick API</li>
+          <li style="font-size:13px;">Tverr­kanal innsikts­analyse</li>
+          <li style="font-size:13px;">Lærer av hvert salg og utfall</li>
+        </ul>
+      </div>
+      <div class="card-ai" style="border-left:3px solid #A855F7;">
+        <p style="font-size:12px;opacity:.8;line-height:1.55;">Alle AI-kall går gjennom AI Core — én tjeneste, én API-nøkkel, full kontroll og logging.</p>
+      </div>
+    </div>
+
+    <!-- AI Sidekick -->
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font-size:28px;">💬</span>
+        <h3 style="color:#C084FC;">AI Sidekick</h3>
+      </div>
+      <div class="card-ai">
+        <h3 style="font-size:13px;color:#C084FC;margin-bottom:8px;">Flytende chatbot · Alle apper</h3>
+        <ul class="check-list" style="gap:8px;">
+          <li style="font-size:13px;">Selger-modus: neste steg, oppfølging, innsigelse­håndtering</li>
+          <li style="font-size:13px;">Leder-modus: pipeline­overblikk, risk­analyse, statusrapport</li>
+          <li style="font-size:13px;">Kontekst fra live pipeline injiseres automatisk</li>
+          <li style="font-size:13px;">Skriver e-poster og oppsummeringer</li>
+        </ul>
+      </div>
+      <div class="card-ai" style="border-left:3px solid #A855F7;">
+        <p style="font-size:12px;opacity:.8;line-height:1.55;">Leder spør «Hvilke deals er i fare?» — Sidekick svarer med live data fra War Room.</p>
+      </div>
+    </div>
+
+    <!-- Hub Agenter -->
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font-size:28px;">🔍</span>
+        <h3 style="color:#C084FC;">Hub Agenter</h3>
+      </div>
+      <div class="card-ai">
+        <h3 style="font-size:13px;color:#C084FC;margin-bottom:8px;">Innsikts­agent + NBA-agent</h3>
+        <ul class="check-list" style="gap:8px;">
+          <li style="font-size:13px;">Analyserer salgsdata på tvers av SDU og MDU</li>
+          <li style="font-size:13px;">Churn­årsaker, win­faktorer, produkt­trender</li>
+          <li style="font-size:13px;">NBA-ytelse: treffsikkerhet, divergens­par, topp­produkter</li>
+          <li style="font-size:13px;">Delt læring mellom kanaler</li>
+        </ul>
+      </div>
+      <div class="card-ai" style="border-left:3px solid #A855F7;">
+        <p style="font-size:12px;opacity:.8;line-height:1.55;">Én klikk — AI analyserer alle salg og returnerer strukturert rapport med anbefalinger.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     SLIDE 9 — BYGGET AGENTISK
+═══════════════════════════════════════════════════════ -->
+<div class="slide vdark" id="s9">
+  <div style="position:absolute;inset:0;overflow:hidden;pointer-events:none;">
+    <div style="position:absolute;top:-60px;right:-60px;width:380px;height:380px;border-radius:50%;background:radial-gradient(circle,rgba(168,85,247,.12) 0%,transparent 70%);"></div>
+  </div>
+  <div class="eyebrow accent" style="position:relative;z-index:1;">Utviklingsparadigme</div>
+  <h2 style="position:relative;z-index:1;">Bygget Agentisk — <span class="ai-accent">Hvert tjeneste har sin kodebot</span></h2>
+  <div class="divider" style="position:relative;z-index:1;"></div>
+
+  <div style="flex:1;display:grid;grid-template-columns:3fr 2fr;gap:28px;margin-top:4px;position:relative;z-index:1;">
+
+    <!-- Left: service grid -->
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <p style="font-size:14px;opacity:.7;line-height:1.6;">Hele systemet er bygget agentisk — Claude Code var teknisk medarbeider på hvert eneste tjeneste. Det betyr at hvert modul har sin egen AI som forstår koden, historikken og konteksten.</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px;margin-top:4px;">
+        <div class="agent-tile" style="border-color:rgba(245,166,35,.3);background:rgba(245,166,35,.08);"><span>🔌</span><span style="flex:1;color:#F5A623;">Integration Layer</span><span style="font-size:13px;">🤖</span></div>
+        <div class="agent-tile"><span>🏗️</span><span style="flex:1;">KAS Core</span><span style="font-size:13px;">🤖</span></div>
+        <div class="agent-tile"><span>📋</span><span style="flex:1;">Sales Core</span><span style="font-size:13px;">🤖</span></div>
+        <div class="agent-tile"><span>📱</span><span style="flex:1;">SDU CRM</span><span style="font-size:13px;">🤖</span></div>
+        <div class="agent-tile"><span>🏢</span><span style="flex:1;">MDU CRM</span><span style="font-size:13px;">🤖</span></div>
+        <div class="agent-tile"><span>📊</span><span style="flex:1;">MDU Leder</span><span style="font-size:13px;">🤖</span></div>
+        <div class="agent-tile"><span>🚀</span><span style="flex:1;">Salgs Hub</span><span style="font-size:13px;">🤖</span></div>
+        <div class="agent-tile"><span>🎯</span><span style="flex:1;">SDU Incentives</span><span style="font-size:13px;">🤖</span></div>
+        <div class="agent-tile"><span>🗺️</span><span style="flex:1;">SDU Planner</span><span style="font-size:13px;">🤖</span></div>
+        <div class="agent-tile"><span>⚙️</span><span style="flex:1;">Workflow</span><span style="font-size:13px;">🤖</span></div>
+        <div class="agent-tile ai"><span>🧠</span><span style="flex:1;color:#C084FC;">AI Core</span><span style="font-size:13px;">🤖</span></div>
+        <div class="agent-tile ai"><span>💬</span><span style="flex:1;color:#C084FC;">AI Sidekick</span><span style="font-size:13px;">🤖</span></div>
+        <div class="agent-tile ai"><span>🔍</span><span style="flex:1;color:#C084FC;">Hub Agenter</span><span style="font-size:13px;">🤖</span></div>
+      </div>
+      <!-- Agentic loop -->
+      <div style="margin-top:12px;padding:14px 16px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:12px;">
+        <div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;opacity:.4;margin-bottom:10px;">Den agentiske utviklingssyklusen</div>
+        <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
+          <div style="padding:6px 10px;background:rgba(1,172,251,.12);border:1px solid rgba(1,172,251,.25);border-radius:7px;font-size:11px;font-weight:600;color:#01ACFB;">💬 Krav i chat</div>
+          <div style="font-size:12px;opacity:.35;">→</div>
+          <div style="padding:6px 10px;background:rgba(168,85,247,.12);border:1px solid rgba(168,85,247,.25);border-radius:7px;font-size:11px;font-weight:600;color:#C084FC;">🤖 AI analyserer</div>
+          <div style="font-size:12px;opacity:.35;">→</div>
+          <div style="padding:6px 10px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:7px;font-size:11px;font-weight:600;">⌨️ Kode skrives</div>
+          <div style="font-size:12px;opacity:.35;">→</div>
+          <div style="padding:6px 10px;background:rgba(245,166,35,.1);border:1px solid rgba(245,166,35,.25);border-radius:7px;font-size:11px;font-weight:600;color:#F5A623;">🚀 Deploy</div>
+          <div style="font-size:12px;opacity:.35;">→</div>
+          <div style="padding:6px 10px;background:rgba(0,166,80,.1);border:1px solid rgba(0,166,80,.25);border-radius:7px;font-size:11px;font-weight:600;color:#00A650;">✅ Live</div>
+          <div style="font-size:12px;opacity:.35;">↺</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: implications -->
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <div style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;opacity:.4;margin-bottom:2px;">Hva dette betyr</div>
+
+      <div class="card" style="padding:16px 18px;">
+        <div style="font-size:20px;margin-bottom:6px;">🏗️</div>
+        <h3 style="font-size:13px;color:#01ACFB;margin-bottom:4px;">Én person = enterprise-system</h3>
+        <p style="font-size:12px;opacity:.7;line-height:1.5;">Det som normalt krever et helt team er bygget av én person med AI som teknisk partner.</p>
+      </div>
+
+      <div class="card" style="padding:16px 18px;">
+        <div style="font-size:20px;margin-bottom:6px;">🔄</div>
+        <h3 style="font-size:13px;color:#01ACFB;margin-bottom:4px;">Vedlikehold autonomt per tjeneste</h3>
+        <p style="font-size:12px;opacity:.7;line-height:1.5;">Vil du endre MDU CRM? AI-en forstår allerede koden og konteksten — endringer på timer, ikke uker.</p>
+      </div>
+
+      <div class="card" style="padding:16px 18px;">
+        <div style="font-size:20px;margin-bottom:6px;">⚡</div>
+        <h3 style="font-size:13px;color:#01ACFB;margin-bottom:4px;">Fra idé til produksjon på dager</h3>
+        <p style="font-size:12px;opacity:.7;line-height:1.5;">Ny funksjonalitet spesifiseres i chat — koden genereres, testes og deployes uten lang sprint-syklus.</p>
+      </div>
+
+      <div class="card-ai" style="padding:16px 18px;">
+        <div style="font-size:20px;margin-bottom:6px;">🚀</div>
+        <h3 style="font-size:13px;color:#C084FC;margin-bottom:4px;">Klar for agentic sales</h3>
+        <p style="font-size:12px;opacity:.8;line-height:1.5;">Systemet er bygget med AI fra bunnen — ikke boltet på etterpå. Neste generasjon salgs­agenter kan plugges rett inn.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     SLIDE 10 — GATEWAY & MODULÆR ARKITEKTUR
+═══════════════════════════════════════════════════════ -->
+<div class="slide mid" id="s10">
+  <div class="eyebrow" style="opacity:.5;">Arkitekturvalg</div>
+  <h2>Gateway-mønster, modulær arkitektur &amp; AI-fremtid</h2>
+  <div class="divider"></div>
+
+  <div class="grid-2" style="flex:1;margin-top:4px;">
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div class="card">
+        <h3 style="color:#01ACFB;font-size:14px;margin-bottom:10px;">🚪 Hvorfor gateway?</h3>
+        <ul style="list-style:none;display:flex;flex-direction:column;gap:8px;">
+          <li style="font-size:13px;opacity:.85;display:flex;gap:8px;"><span style="color:#01ACFB;">→</span> Én SSO-inngang — brukere logger inn ett sted</li>
+          <li style="font-size:13px;opacity:.85;display:flex;gap:8px;"><span style="color:#01ACFB;">→</span> Rollestyring sentralisert, ikke spredt i appene</li>
+          <li style="font-size:13px;opacity:.85;display:flex;gap:8px;"><span style="color:#01ACFB;">→</span> Nye apper kan legges til uten å endre eksisterende</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3 style="color:#01ACFB;font-size:14px;margin-bottom:10px;">🧩 Hvorfor modulær?</h3>
+        <ul style="list-style:none;display:flex;flex-direction:column;gap:8px;">
+          <li style="font-size:13px;opacity:.85;display:flex;gap:8px;"><span style="color:#01ACFB;">→</span> SDU og MDU kan itereres uavhengig</li>
+          <li style="font-size:13px;opacity:.85;display:flex;gap:8px;"><span style="color:#01ACFB;">→</span> En feil i ett system stopper ikke resten</li>
+          <li style="font-size:13px;opacity:.85;display:flex;gap:8px;"><span style="color:#01ACFB;">→</span> Skalerbar etter behov</li>
+        </ul>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div class="card" style="border-color:rgba(0,166,80,.3);">
+        <h3 style="color:#00A650;font-size:14px;margin-bottom:10px;">✅ Fordeler vs. Salesforce-monolitt</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:4px;">
+          <div style="padding:10px;background:rgba(0,0,0,.2);border-radius:8px;">
+            <div style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.45);margin-bottom:6px;">Salesforce</div>
+            <div style="font-size:12px;opacity:.7;line-height:1.6;">Lisenskostnad per bruker · Stiv konfigurasjon · Treg tilpasning · Dataeierskap utenfor Telenor</div>
+          </div>
+          <div style="padding:10px;background:rgba(0,166,80,.1);border-radius:8px;border:1px solid rgba(0,166,80,.2);">
+            <div style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#00A650;margin-bottom:6px;">Modulær løsning</div>
+            <div style="font-size:12px;opacity:.85;line-height:1.6;">Full kontroll · Tilpasset Telenors flyt · Rask iterasjon · Data hos Telenor</div>
+          </div>
+        </div>
+      </div>
+      <!-- NEW: AI readiness card -->
+      <div class="card-ai">
+        <h3 style="color:#C084FC;font-size:14px;margin-bottom:10px;">🤖 Klar for fremtidens AI</h3>
+        <ul style="list-style:none;display:flex;flex-direction:column;gap:7px;">
+          <li style="font-size:13px;opacity:.85;display:flex;gap:8px;"><span style="color:#C084FC;">→</span> AI Core er allerede integrert som en mikrotjeneste</li>
+          <li style="font-size:13px;opacity:.85;display:flex;gap:8px;"><span style="color:#C084FC;">→</span> Nye AI-agenter plugges inn uten å endre eksisterende apper</li>
+          <li style="font-size:13px;opacity:.85;display:flex;gap:8px;"><span style="color:#C084FC;">→</span> Gateway ruter til AI-tjenester akkurat som andre apper</li>
+          <li style="font-size:13px;opacity:.85;display:flex;gap:8px;"><span style="color:#C084FC;">→</span> <em>Agentic sales</em> — autonome salgsagenter kan kobles på som nye moduler</li>
+          <li style="font-size:13px;opacity:.85;display:flex;gap:8px;"><span style="color:#C084FC;">→</span> Klar for neste generasjon AI — voice, autonome agenter, real-time innsikt</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     SLIDE 11 — TEST-MILJØ PÅ RAILWAY
+═══════════════════════════════════════════════════════ -->
+<div class="slide dark" id="s11">
+  <div class="eyebrow accent">Test-miljø</div>
+  <h2>Kjøres på Railway — kun for testing</h2>
+  <div class="divider"></div>
+  <div class="grid-2" style="flex:1;margin-top:4px;gap:20px;">
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <p class="lead" style="font-size:15px;opacity:.75;">Alle 13 tjenester er deployet og kjørende på Railway som et sammenhengende system — dette er et <strong style="color:#01ACFB;">proof of concept</strong>, ikke et produksjonssystem.</p>
+
+      <div style="display:flex;flex-direction:column;gap:7px;">
+        <div class="svc-badge" style="background:rgba(245,166,35,.08);border-color:rgba(245,166,35,.3);"><div class="svc-dot"></div><span style="color:#F5A623;">integration-layer</span><code style="font-size:10px;opacity:.5;margin-left:auto;">Express · Node · Adapters</code></div>
+        <div class="svc-badge"><div class="svc-dot"></div><span>kas-core</span><code style="font-size:10px;opacity:.5;margin-left:auto;">Express · Node</code></div>
+        <div class="svc-badge"><div class="svc-dot"></div><span>sales-core</span><code style="font-size:10px;opacity:.5;margin-left:auto;">Express · Node</code></div>
+        <div class="svc-badge"><div class="svc-dot"></div><span>sdu-crm</span><code style="font-size:10px;opacity:.5;margin-left:auto;">React · Vite</code></div>
+        <div class="svc-badge"><div class="svc-dot"></div><span>mdu-crm</span><code style="font-size:10px;opacity:.5;margin-left:auto;">React · Vite</code></div>
+        <div class="svc-badge"><div class="svc-dot"></div><span>mdu-leder</span><code style="font-size:10px;opacity:.5;margin-left:auto;">React · Vite</code></div>
+        <div class="svc-badge"><div class="svc-dot"></div><span>salgshub</span><code style="font-size:10px;opacity:.5;margin-left:auto;">React · Vite</code></div>
+        <div class="svc-badge"><div class="svc-dot"></div><span>sdu-incentives</span><code style="font-size:10px;opacity:.5;margin-left:auto;">React · Vite</code></div>
+        <div class="svc-badge"><div class="svc-dot"></div><span>sdu-planner</span><code style="font-size:10px;opacity:.5;margin-left:auto;">React · Vite</code></div>
+        <div class="svc-badge"><div class="svc-dot"></div><span>workflow</span><code style="font-size:10px;opacity:.5;margin-left:auto;">Node</code></div>
+        <div class="svc-badge" style="background:rgba(168,85,247,.1);border-color:rgba(168,85,247,.25);"><div class="svc-dot-ai"></div><span style="color:#C084FC;">ai-core</span><code style="font-size:10px;opacity:.5;margin-left:auto;">Express · Node · Anthropic SDK</code></div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px;">
+      <div style="flex:1;min-height:260px;border-radius:14px;overflow:hidden;border:1px solid rgba(255,255,255,.1);position:relative;">
+        <img src="railway-dashboard.png" alt="Railway dashboard"
+          style="width:100%;height:100%;object-fit:cover;object-position:center top;display:block;"
+          onerror="this.parentElement.innerHTML='<div class=\'rw-placeholder\' style=\'height:100%;\'><div style=\'font-size:32px;\'>📸</div><div style=\'font-size:15px;font-weight:700;\'>Lagre skjermbildet som railway-dashboard.png i prosjektmappen</div></div>'"
+        />
+      </div>
+      <div class="card" style="border-color:rgba(245,166,35,.3);">
+        <h3 style="color:#F5A623;font-size:13px;margin-bottom:8px;">⚠️ Test-begrensninger</h3>
+        <ul class="warn-list">
+          <li>In-memory data — resettes ved restart</li>
+          <li>Ingen persistent database</li>
+          <li>Railway Free Tier — kan sove ved inaktivitet</li>
+          <li>Ikke GDPR-sertifisert miljø</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     SLIDE 12 — PRODUCTION READY
+═══════════════════════════════════════════════════════ -->
+<div class="slide vdark" id="s12">
+  <div class="eyebrow accent">Production Readiness</div>
+  <h2>Fra PoC til enterprise-grade</h2>
+  <div class="divider"></div>
+
+  <div class="grid-3" style="flex:1;margin-top:4px;">
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <h3 style="color:#01ACFB;font-size:14px;display:flex;align-items:center;gap:8px;"><span>🔐</span> Sikkerhet &amp; Identitet</h3>
+      <div class="card" style="flex:1;">
+        <ul class="check-list" style="gap:10px;">
+          <li style="font-size:13px;">Koble til <strong>eksisterende SSO</strong> (Azure AD / Entra ID)</li>
+          <li style="font-size:13px;">JWT-validering i alle backend-API-er</li>
+          <li style="font-size:13px;">Scope-basert tilgangskontroll (RBAC)</li>
+          <li style="font-size:13px;">TLS overalt — allerede håndtert av hosting</li>
+          <li style="font-size:13px;">API-nøkler og hemmeligheter i Azure Key Vault</li>
+          <li style="font-size:13px;">Revisjonslogg på alle datamutasjoner</li>
+        </ul>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <h3 style="color:#01ACFB;font-size:14px;display:flex;align-items:center;gap:8px;"><span>🗄️</span> Data &amp; Hosting</h3>
+      <div class="card" style="flex:1;">
+        <ul class="check-list" style="gap:10px;">
+          <li style="font-size:13px;">Flytt til <strong>Azure Norway East</strong> — allerede sikker infrastruktur</li>
+          <li style="font-size:13px;">PostgreSQL erstatter in-memory data</li>
+          <li style="font-size:13px;">Daglig backup og point-in-time recovery</li>
+          <li style="font-size:13px;">Data-residency: Norge/EU for GDPR</li>
+          <li style="font-size:13px;">Private nettverk mellom tjenestene (VNet)</li>
+          <li style="font-size:13px;">CDN for frontend-appene</li>
+        </ul>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <h3 style="color:#01ACFB;font-size:14px;display:flex;align-items:center;gap:8px;"><span>📈</span> Drift &amp; Kvalitet</h3>
+      <div class="card" style="flex:1;">
+        <ul class="check-list" style="gap:10px;">
+          <li style="font-size:13px;">CI/CD pipeline med automatiske tester</li>
+          <li style="font-size:13px;">Overvåking og alerting (Datadog / Azure Monitor)</li>
+          <li style="font-size:13px;">Structured logging og distribuert sporing</li>
+          <li style="font-size:13px;">Rate limiting og DDoS-beskyttelse</li>
+          <li style="font-size:13px;">Staging-miljø — separat fra prod</li>
+          <li style="font-size:13px;">SLA-definisjon og on-call rutiner</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top:16px;padding:14px 20px;background:rgba(0,166,80,.1);border:1px solid rgba(0,166,80,.25);border-radius:12px;">
+    <p style="font-size:13px;color:rgba(255,255,255,.8);line-height:1.6;">
+      <span style="color:#00A650;font-weight:700;">Nøkkelpunkt:</span> Arkitekturen er allerede cloud-native og stateless — det meste av produksjons­tilpasning handler om å koble til eksisterende infrastruktur (SSO, database, hosting) som Telenor allerede har på plass.
+    </p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     SLIDE 13 — ØKONOMI
+═══════════════════════════════════════════════════════ -->
+<div class="slide econ" id="s13">
+  <div style="position:absolute;inset:0;overflow:hidden;pointer-events:none;">
+    <div style="position:absolute;top:-60px;right:-60px;width:420px;height:420px;border-radius:50%;background:radial-gradient(circle,rgba(0,166,80,.08) 0%,transparent 70%);"></div>
+    <div style="position:absolute;bottom:-40px;left:-40px;width:320px;height:320px;border-radius:50%;background:radial-gradient(circle,rgba(168,85,247,.06) 0%,transparent 70%);"></div>
+  </div>
+  <div class="eyebrow accent" style="position:relative;z-index:1;">Økonomi</div>
+  <h2 style="position:relative;z-index:1;">Fra lisenser til eierskap</h2>
+  <div class="divider" style="position:relative;z-index:1;"></div>
+
+  <div style="flex:1;display:flex;flex-direction:column;gap:16px;position:relative;z-index:1;">
+
+    <div class="grid-2" style="gap:20px;">
+
+      <!-- I dag -->
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <div style="padding:12px 18px;background:rgba(220,38,38,.12);border:1px solid rgba(220,38,38,.25);border-radius:12px;display:flex;align-items:center;gap:12px;">
+          <span style="font-size:20px;">📉</span>
+          <div>
+            <div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:rgba(220,38,38,.8);margin-bottom:2px;">I dag</div>
+            <div style="font-size:32px;font-weight:800;color:#FCA5A5;line-height:1;">~15 MNOK<span style="font-size:14px;font-weight:600;opacity:.7;">/år</span></div>
+          </div>
+        </div>
+        <div class="card" style="border-color:rgba(220,38,38,.2);flex:1;">
+          <ul style="list-style:none;display:flex;flex-direction:column;gap:9px;">
+            <li style="font-size:13px;opacity:.8;display:flex;gap:8px;align-items:flex-start;"><span style="color:#F87171;font-size:14px;margin-top:1px;">✗</span> Salesforce + ekstra lisenser og tilleggssystemer</li>
+            <li style="font-size:13px;opacity:.8;display:flex;gap:8px;align-items:flex-start;"><span style="color:#F87171;font-size:14px;margin-top:1px;">✗</span> 5 utviklere — konfigurasjon, opplæring, tilpasning</li>
+            <li style="font-size:13px;opacity:.8;display:flex;gap:8px;align-items:flex-start;"><span style="color:#F87171;font-size:14px;margin-top:1px;">✗</span> Kostnad skalerer med antall brukere</li>
+            <li style="font-size:13px;opacity:.8;display:flex;gap:8px;align-items:flex-start;"><span style="color:#F87171;font-size:14px;margin-top:1px;">✗</span> Data og logikk låst hos leverandør</li>
+            <li style="font-size:13px;opacity:.8;display:flex;gap:8px;align-items:flex-start;"><span style="color:#F87171;font-size:14px;margin-top:1px;">✗</span> Begrenset AI-kapasitet — boltet på, ikke innebygd</li>
+            <li style="font-size:13px;opacity:.8;display:flex;gap:8px;align-items:flex-start;"><span style="color:#F87171;font-size:14px;margin-top:1px;">✗</span> Lang leveringstid for endringer</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Fremtiden -->
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <div style="padding:12px 18px;background:rgba(0,166,80,.12);border:1px solid rgba(0,166,80,.3);border-radius:12px;display:flex;align-items:center;gap:12px;">
+          <span style="font-size:20px;">📈</span>
+          <div>
+            <div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:rgba(0,166,80,.8);margin-bottom:2px;">Fremtiden</div>
+            <div style="font-size:32px;font-weight:800;color:#6EE7B7;line-height:1;">~3–4 MNOK<span style="font-size:14px;font-weight:600;opacity:.7;">/år</span></div>
+          </div>
+        </div>
+        <div class="card" style="border-color:rgba(0,166,80,.25);flex:1;">
+          <ul style="list-style:none;display:flex;flex-direction:column;gap:9px;">
+            <li style="font-size:13px;opacity:.85;display:flex;gap:8px;align-items:flex-start;"><span style="color:#34D399;font-size:14px;margin-top:1px;">✓</span> Ingen lisenskostnader — kun infrastruktur og drift</li>
+            <li style="font-size:13px;opacity:.85;display:flex;gap:8px;align-items:flex-start;"><span style="color:#34D399;font-size:14px;margin-top:1px;">✓</span> 2 utviklere i vedlikeholds-modus med AI-støtte</li>
+            <li style="font-size:13px;opacity:.85;display:flex;gap:8px;align-items:flex-start;"><span style="color:#34D399;font-size:14px;margin-top:1px;">✓</span> Skalerer uten ekstra lisenskostnad</li>
+            <li style="font-size:13px;opacity:.85;display:flex;gap:8px;align-items:flex-start;"><span style="color:#34D399;font-size:14px;margin-top:1px;">✓</span> Full eierskap — data, kode og logikk hos Telenor</li>
+            <li style="font-size:13px;opacity:.85;display:flex;gap:8px;align-items:flex-start;"><span style="color:#C084FC;font-size:14px;margin-top:1px;">✓</span> <span>AI innebygd fra bunnen — <span style="color:#C084FC;">klar for neste generasjon</span></span></li>
+            <li style="font-size:13px;opacity:.85;display:flex;gap:8px;align-items:flex-start;"><span style="color:#34D399;font-size:14px;margin-top:1px;">✓</span> Skreddersydd Telenors egne prosesser</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Savings banner -->
+    <div style="padding:16px 24px;background:linear-gradient(90deg,rgba(0,166,80,.15),rgba(168,85,247,.12));border:1px solid rgba(0,166,80,.3);border-radius:14px;display:flex;align-items:center;justify-content:space-between;gap:20px;">
+      <div>
+        <div style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#00A650;margin-bottom:4px;">Potensielle besparelser</div>
+        <div style="font-size:28px;font-weight:800;color:#6EE7B7;line-height:1;">11–12 MNOK <span style="font-size:14px;font-weight:600;opacity:.7;">per år</span></div>
+      </div>
+      <div style="width:1px;height:48px;background:rgba(255,255,255,.1);"></div>
+      <div style="flex:1;">
+        <p style="font-size:13px;opacity:.75;line-height:1.6;">Et skreddersydd system som bruker AI og er klar for neste generasjons salgsagenter — bygget og vedlikeholdt agentisk.</p>
+      </div>
+      <div style="width:1px;height:48px;background:rgba(255,255,255,.1);"></div>
+      <div style="text-align:center;padding:0 8px;">
+        <div style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.4;margin-bottom:4px;">Tidslinje</div>
+        <div style="font-size:13px;font-weight:700;color:#F5A623;">En gradvis reise</div>
+        <div style="font-size:11px;opacity:.55;margin-top:2px;">12–24 måneder</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     SLIDE 14 — STAKEHOLDER-GJENNOMGANG
+═══════════════════════════════════════════════════════ -->
+<div class="slide mid" id="s14">
+  <div class="eyebrow" style="opacity:.5;">Før vi går videre</div>
+  <h2>Stakeholder-gjennomgang</h2>
+  <div class="divider"></div>
+
+  <div style="flex:1;display:flex;flex-direction:column;gap:14px;margin-top:4px;">
+
+    <p style="font-size:15px;opacity:.8;line-height:1.6;max-width:820px;">
+      Før løsningen kan produksjonssettes må vi sikre to ting per stakeholder:
+      <strong style="color:#01ACFB;">all nødvendig data er på plass</strong> og
+      <strong style="color:#01ACFB;">flyten samsvarer med prosessen de ønsker at selgere jobber etter.</strong>
+    </p>
+
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;flex:1;">
+
+      <div class="card" style="display:flex;flex-direction:column;gap:10px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="font-size:22px;">👔</div>
+          <h3 style="font-size:14px;color:#01ACFB;">Salgsleder</h3>
+        </div>
+        <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.4;margin-top:2px;">Data å verifisere</div>
+        <ul style="list-style:none;display:flex;flex-direction:column;gap:6px;">
+          <li style="font-size:12px;opacity:.8;display:flex;gap:7px;"><span style="color:#F5A623;">?</span>Eksisterende rundestruktur og geografiske soner</li>
+          <li style="font-size:12px;opacity:.8;display:flex;gap:7px;"><span style="color:#F5A623;">?</span>Selgerhierarki og teamstruktur</li>
+          <li style="font-size:12px;opacity:.8;display:flex;gap:7px;"><span style="color:#F5A623;">?</span>KPI-er og rapporteringskrav</li>
+        </ul>
+        <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.4;margin-top:4px;">Prosess å samkjøre</div>
+        <ul style="list-style:none;display:flex;flex-direction:column;gap:6px;">
+          <li style="font-size:12px;opacity:.8;display:flex;gap:7px;"><span style="color:#01ACFB;">→</span>Godkjenningsflyt for runder og tilbud</li>
+          <li style="font-size:12px;opacity:.8;display:flex;gap:7px;"><span style="color:#01ACFB;">→</span>Eskaleringsrutiner ved avvik</li>
+        </ul>
+      </div>
+
+      <div class="card" style="display:flex;flex-direction:column;gap:10px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="font-size:22px;">🚶</div>
+          <h3 style="font-size:14px;color:#01ACFB;">Selgere / Feltteam</h3>
+        </div>
+        <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.4;margin-top:2px;">Data å verifisere</div>
+        <ul style="list-style:none;display:flex;flex-direction:column;gap:6px;">
+          <li style="font-size:12px;opacity:.8;display:flex;gap:7px;"><span style="color:#F5A623;">?</span>Er alle produkter og kampanjer tilgjengelig?</li>
+          <li style="font-size:12px;opacity:.8;display:flex;gap:7px;"><span style="color:#F5A623;">?</span>Mangler det kundeinfo de er avhengig av?</li>
+          <li style="font-size:12px;opacity:.8;display:flex;gap:7px;"><span style="color:#F5A623;">?</span>Offline-behov ved dårlig dekning</li>
+        </ul>
+        <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.4;margin-top:4px;">Prosess å samkjøre</div>
+        <ul style="list-style:none;display:flex;flex-direction:column;gap:6px;">
+          <li style="font-size:12px;opacity:.8;display:flex;gap:7px;"><span style="color:#01ACFB;">→</span>Godkjenner 3-stegs ordreflyt?</li>
+          <li style="font-size:12px;opacity:.8;display:flex;gap:7px;"><span style="color:#01ACFB;">→</span>Trenger selger noe appen ikke har i dag?</li>
+        </ul>
+      </div>
+
+      <div class="card" style="display:flex;flex-direction:column;gap:10px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="font-size:22px;">📦</div>
+          <h3 style="font-size:14px;color:#01ACFB;">Produkt &amp; CRM-eier</h3>
+        </div>
+        <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.4;margin-top:2px;">Data å verifisere</div>
+        <ul style="list-style:none;display:flex;flex-direction:column;gap:6px;">
+          <li style="font-size:12px;opacity:.8;display:flex;gap:7px;"><span style="color:#F5A623;">?</span>Komplett produktkatalog — SDU og MDU</li>
+          <li style="font-size:12px;opacity:.8;display:flex;gap:7px;"><span style="color:#F5A623;">?</span>Alle aktive kampanjer og provisjonsregler</li>
+          <li style="font-size:12px;opacity:.8;display:flex;gap:7px;"><span style="color:#F5A623;">?</span>Eksisterende kundedata fra Salesforce</li>
+        </ul>
+        <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.4;margin-top:4px;">Prosess å samkjøre</div>
+        <ul style="list-style:none;display:flex;flex-direction:column;gap:6px;">
+          <li style="font-size:12px;opacity:.8;display:flex;gap:7px;"><span style="color:#01ACFB;">→</span>Migrasjonsplan fra Salesforce</li>
+          <li style="font-size:12px;opacity:.8;display:flex;gap:7px;"><span style="color:#01ACFB;">→</span>Hvem eier kampanjeoppdateringer fremover?</li>
+        </ul>
+      </div>
+
+      <div class="card" style="display:flex;flex-direction:column;gap:10px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="font-size:22px;">🖥️</div>
+          <h3 style="font-size:14px;color:#01ACFB;">IT / Arkitektur</h3>
+        </div>
+        <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.4;margin-top:2px;">Data å verifisere</div>
+        <ul style="list-style:none;display:flex;flex-direction:column;gap:6px;">
+          <li style="font-size:12px;opacity:.8;display:flex;gap:7px;"><span style="color:#F5A623;">?</span>Eksisterende API-er vi kan integrere mot</li>
+          <li style="font-size:12px;opacity:.8;display:flex;gap:7px;"><span style="color:#F5A623;">?</span>Krav til dataplassering og nettverksoppsett</li>
+        </ul>
+        <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.4;margin-top:4px;">Prosess å samkjøre</div>
+        <ul style="list-style:none;display:flex;flex-direction:column;gap:6px;">
+          <li style="font-size:12px;opacity:.8;display:flex;gap:7px;"><span style="color:#01ACFB;">→</span>SSO-integrasjon og tilgangsstyring</li>
+          <li style="font-size:12px;opacity:.8;display:flex;gap:7px;"><span style="color:#01ACFB;">→</span>Hosting-valg og driftsmodell</li>
+        </ul>
+      </div>
+
+      <div class="card" style="display:flex;flex-direction:column;gap:10px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="font-size:22px;">⚖️</div>
+          <h3 style="font-size:14px;color:#01ACFB;">Juridisk / Compliance</h3>
+        </div>
+        <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.4;margin-top:2px;">Data å verifisere</div>
+        <ul style="list-style:none;display:flex;flex-direction:column;gap:6px;">
+          <li style="font-size:12px;opacity:.8;display:flex;gap:7px;"><span style="color:#F5A623;">?</span>GDPR-krav til kundedata og samtykke</li>
+          <li style="font-size:12px;opacity:.8;display:flex;gap:7px;"><span style="color:#F5A623;">?</span>Revisjonskrav og loggingskrav</li>
+        </ul>
+        <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.4;margin-top:4px;">Prosess å samkjøre</div>
+        <ul style="list-style:none;display:flex;flex-direction:column;gap:6px;">
+          <li style="font-size:12px;opacity:.8;display:flex;gap:7px;"><span style="color:#01ACFB;">→</span>Akseptprosessen — holder "snudd skjerm"?</li>
+          <li style="font-size:12px;opacity:.8;display:flex;gap:7px;"><span style="color:#01ACFB;">→</span>Krav til signatur eller bekreftelse på salg</li>
+        </ul>
+      </div>
+
+      <div class="card" style="border-color:rgba(0,166,80,.3);display:flex;flex-direction:column;justify-content:center;gap:12px;background:rgba(0,166,80,.07);">
+        <div style="font-size:22px;">✅</div>
+        <h3 style="font-size:14px;color:#00A650;">Anbefalt tilnærming</h3>
+        <p style="font-size:12px;opacity:.85;line-height:1.65;">Gjennomfør en <strong>workshop per stakeholder-gruppe</strong> — ca. 60 min — med fokus på én enkel agenda: <em>«Hva mangler, og stemmer flyten?»</em></p>
+        <p style="font-size:12px;opacity:.85;line-height:1.65;">Output: gap-liste og prosessbekreftelse som gir grunnlag for prioritert backlog til neste iterasjon.</p>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     SLIDE 15 — NESTE STEG
+═══════════════════════════════════════════════════════ -->
+<div class="slide dark" id="s15">
+  <div style="position:absolute;inset:0;overflow:hidden;pointer-events:none;">
+    <div style="position:absolute;top:-100px;right:-100px;width:450px;height:450px;border-radius:50%;background:radial-gradient(circle,rgba(0,166,80,.12) 0%,transparent 70%);"></div>
+    <div style="position:absolute;bottom:-60px;left:-60px;width:300px;height:300px;border-radius:50%;background:radial-gradient(circle,rgba(168,85,247,.08) 0%,transparent 70%);"></div>
+  </div>
+  <div style="flex:1;display:flex;flex-direction:column;justify-content:center;position:relative;z-index:1;">
+    <span class="pill pill-green" style="align-self:flex-start;margin-bottom:20px;">Veien videre</span>
+    <h2 style="font-size:clamp(28px,4vw,48px);max-width:680px;">Klar til å gå fra proof of concept til&nbsp;<span class="accent-green">reell verdi</span></h2>
+    <div style="height:28px;"></div>
+    <div class="grid-3" style="gap:16px;">
+      <div style="padding:20px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:14px;">
+        <div style="font-size:24px;margin-bottom:10px;">1️⃣</div>
+        <h3 style="font-size:14px;color:#01ACFB;margin-bottom:6px;">Koble til SSO</h3>
+        <p style="font-size:12px;opacity:.65;line-height:1.55;">Plugge inn eksisterende Telenor-identitet — estimert 1–2 uker.</p>
+      </div>
+      <div style="padding:20px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:14px;">
+        <div style="font-size:24px;margin-bottom:10px;">2️⃣</div>
+        <h3 style="font-size:14px;color:#01ACFB;margin-bottom:6px;">Koble til ekte data</h3>
+        <p style="font-size:12px;opacity:.65;line-height:1.55;">KAS Core mot eksisterende kunde-API — erstatt seed-data med live data.</p>
+      </div>
+      <div style="padding:20px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:14px;">
+        <div style="font-size:24px;margin-bottom:10px;">3️⃣</div>
+        <h3 style="font-size:14px;color:#01ACFB;margin-bottom:6px;">Pilot med selgere</h3>
+        <p style="font-size:12px;opacity:.65;line-height:1.55;">Kjør en ekte felttest med et lite team — samle tilbakemeldinger og iterer.</p>
+      </div>
+    </div>
+    <div style="height:28px;"></div>
+    <div style="display:flex;align-items:center;gap:16px;opacity:.5;">
+      <svg width="22" height="20" viewBox="0 0 139.82 128.73"><path fill="#01ACFB" d="M70.67,39.37c2,.31,2.4-.1,2.67-2a45.17,45.17,0,0,1,3.89-12.75C79.85,19.24,84,13.33,89.85,9.36a62.78,62.78,0,0,1,19.2-8.26,46.83,46.83,0,0,1,14-.93c8.42.76,13.08,3.16,15.42,6.27A6.75,6.75,0,0,1,139.81,10c.07,1.55-.6,3.56-2.83,5.54s-6.77,4.33-13.06,6.44c-6.52,2.17-15.44,4.47-24.33,6.51a137.22,137.22,0,0,0-15.22,4.37c-5.88,2-7.65,7.85-4,9.64A54.92,54.92,0,0,1,91.82,50,101.32,101.32,0,0,1,107.08,65c5.53,6.76,14.59,19.66,17.84,32.18,3.61,13.75,1.36,26.78-6.42,30.42-7.63,3.58-17.79-1.58-24.93-9-6.78-7-11.52-15.29-16-28-3.86-11-5.42-26.87-5.42-35.19,0-2.77,0-3.36.07-5.86.26-2.18-5.62-4-11.94.08-7.19,4.63-14.23,13-18.39,17.88-1.81,2.13-4.27,5.25-6.86,8.52-3.43,4.3-7.21,8.78-10.66,11.28C19.2,91,10.87,92.6,5,88.44c-3.25-2.32-5-6.7-5-11.16a16.91,16.91,0,0,1,2.3-8.77c2-3.43,5.17-7.12,10.28-11.34A90.51,90.51,0,0,1,34.73,44.54c12.88-5.19,26.75-6.82,35.94-5.17Z"/></svg>
+      <span style="font-size:13px;font-weight:600;letter-spacing:.06em;">Telenor · Modulær Salgsløsning PoC · 2026</span>
+    </div>
+  </div>
+</div>
+
+</div><!-- end deck -->
+
+<div id="nav"></div>
+
+<script>
+  const slides = document.querySelectorAll('.slide');
+  let cur = 0;
+
+  function render() {
+    slides.forEach((s, i) => {
+      s.classList.remove('active', 'prev');
+      if (i === cur) s.classList.add('active');
+      else if (i < cur) s.classList.add('prev');
+    });
+    document.querySelectorAll('.dot').forEach((d, i) => {
+      d.classList.toggle('active', i === cur);
+    });
+    document.getElementById('counter').textContent = (cur + 1) + ' / ' + slides.length;
+    document.getElementById('prev-btn').style.opacity = cur === 0 ? '.2' : '1';
+    document.getElementById('next-btn').style.opacity = cur === slides.length - 1 ? '.2' : '1';
+  }
+
+  function go(dir) {
+    cur = Math.max(0, Math.min(slides.length - 1, cur + dir));
+    render();
+  }
+
+  const nav = document.getElementById('nav');
+  slides.forEach((_, i) => {
+    const d = document.createElement('div');
+    d.className = 'dot';
+    d.onclick = () => { cur = i; render(); };
+    nav.appendChild(d);
+  });
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ') { e.preventDefault(); go(1); }
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); go(-1); }
+  });
+
+  let tx = 0;
+  document.addEventListener('touchstart', e => { tx = e.touches[0].clientX; });
+  document.addEventListener('touchend', e => {
+    const dx = e.changedTouches[0].clientX - tx;
+    if (Math.abs(dx) > 40) go(dx < 0 ? 1 : -1);
+  });
+
+  render();
+</script>
+</body>
+</html>
