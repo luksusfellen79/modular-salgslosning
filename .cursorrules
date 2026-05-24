@@ -27,12 +27,13 @@ koblet sammen via en felles backend-arkitektur. Salesforce fases ut fullstendig.
                       ↓
    [MDU CRM] [SDU CRM] [Planner] [Hub] [fremtidige moduler]
 
-[ Sales Core ]   ← salgsoperasjoner (pipeline, tilbud, selgerregister)
-[ KAS Core mock] ← beholdes bakoverkompatibel, migreres gradvis til Integration Layer
+[ Sales Core ]   ← salgsoperasjoner (pipeline, tilbud, selgerregister) — PostgreSQL
+[ KAS Core mock] ← LEGACY, beholdes kun for bakoverkompatibilitet. Migreres gradvis bort.
+[ PostgreSQL ]   ← Railway-hosted, schemas: hub / sales_core / sdu / mdu
 ```
 
-**Kritisk:** Integration Layer er ny master for alle data. KAS Core mock beholdes kun for
-bakoverkompatibilitet. Nye moduler skal alltid hente fra Integration Layer, aldri direkte fra KAS Core.
+**Kritisk:** Integration Layer er ny master for alle data. KAS Core mock er legacy.
+Nye moduler skal alltid hente fra Integration Layer, aldri direkte fra KAS Core.
 
 ---
 
@@ -49,9 +50,11 @@ bakoverkompatibilitet. Nye moduler skal alltid hente fra Integration Layer, aldr
 | SDU CRM (feltsalg)   | sdu-crm-production.up.railway.app                 | SDU CRM/feltsalg-app/          |
 | SDU Incentive Manager| sdu-incentives-production.up.railway.app          | SDU bonuser/incentive-manager/ |
 | SDU Planner          | sdu-planner-production.up.railway.app             | SDU Planner/planner-app/       |
+| PostgreSQL           | postgres.railway.internal:5432 (intern)           | —                              |
 
 Railway project ID: e779d578-b2fb-4875-89d6-e88049d9ecca
 Production environment ID: 16574ee3-d441-4328-85e2-2685dc9027ac
+DATABASE_URL env-var satt på: salgshub, sales-core
 
 ---
 
@@ -67,10 +70,55 @@ Production environment ID: 16574ee3-d441-4328-85e2-2685dc9027ac
 - Integration Layer: **CommonJS** (ikke ESM) — jest + ts-jest krever det
 - Andre tjenester: sjekk eksisterende `package.json` før du antar ESM/CJS
 - **Alltid `.js`-extension i imports** (selv for .ts-filer) — kreves av Node ESM-resolver
+- Database: `pg` (node-postgres) via `db/pool.ts` — connection pooling mot Railway PostgreSQL
 
 **Deploy:**
 - Railway med Nixpacks — bygger automatisk fra GitHub-repo `luksusfellen79/modular-salgslosning`
 - Én mappe per tjeneste = én Railway service
+
+---
+
+## Database (PostgreSQL på Railway) — LIVE
+
+PostgreSQL kjører på Railway. Fire schemas er opprettet:
+
+| Schema       | Tabeller                                           | Brukes av           |
+|--------------|----------------------------------------------------|---------------------|
+| `hub`        | roller, brukere, sessions                          | Hub / alle tjenester|
+| `sales_core` | mdu_deals, mdu_deal_events, tilbud, sdu_selgere, sdu_runder, sdu_besøk | Sales Core |
+| `sdu`        | bonusregler, bonuser, månedlig_oppsummering        | SDU Incentive Mgr   |
+| `mdu`        | kunder, kontrakter, enhetsaktiveringer             | MDU CRM / MDU Leder |
+
+### Database-filstruktur i Sales Core og Hub
+
+```
+Sales Core/src/db/
+  pool.ts              — pg-pool via DATABASE_URL
+  hubRepository.ts     — hub.brukere + hub.sessions
+  mduRepository.ts     — sales_core.mdu_deals + events
+  sduRepository.ts     — sales_core.sdu_runder + sdu_besøk + sdu_selgere
+  mappers.ts           — type-mapping API ↔ DB
+  seed.ts              — bcrypt-seed ved første oppstart (kjøres hvis tabellene er tomme)
+
+Sales Core/src/storage/
+  asyncStorage.ts      — PostgreSQL eller JSON-fallback (brukes hvis DATABASE_URL mangler)
+```
+
+### Viktige regler for DB-kode
+- Alltid parameteriserte queries — aldri string-concatenation
+- `pool.ts` bruker `DATABASE_URL` env-var. Sett alltid denne i Railway.
+- `seed.ts` kjøres automatisk ved oppstart og oppretter brukere + seed-data hvis tabellene er tomme
+- **Midlertidig JSON:** `offers.json` og `events.json` er ikke migrert til PostgreSQL ennå
+- Migreringsskript: `integration-layer/database/migrate.mjs` — kjør én gang ved ny database
+
+### Testbrukere (seedes automatisk fra seed.ts)
+| Navn           | Rolle       | PIN  |
+|----------------|-------------|------|
+| Jørn Haga      | superadmin  | 0000 |
+| Nina Lund      | mdu-leder   | 1234 |
+| Per Andersen   | sdu-leder   | 1234 |
+| Lise Berg      | mdu-selger  | 1234 |
+| Kristian Mo    | sdu-selger  | 1234 |
 
 ---
 
@@ -83,18 +131,12 @@ Alle data hentes via Integration Layer. Nye moduler kaller alltid Integration La
 GET  /products                              — alle produkter (fiber + mobil + tv)
 GET  /products/:id                          — ett produkt
 
-# Kunder og beboere (eksisterende endepunkter)
-GET  /residents/:buildingId                 — beboere i bygg
-GET  /residents/:buildingId/summary         — beboeroversikt
-GET  /units/:unitId/resident                — beboer i enhet
-GET  /customers/:id                         — kundeprofil
-
 # Prising og kampanjer
 GET  /pricing/campaigns                     — alle aktive kampanjer
 GET  /pricing/campaigns/:segment            — kampanjer for segment
 POST /pricing/calculate                     — beregn pris med kampanje
 
-# CustomerAdapter (ny — SDU + MDU kundeintelligens)
+# CustomerAdapter (SDU + MDU kundeintelligens)
 GET  /adapters/customer/buildings/:id/residents         — beboere i bygg (SDU)
 GET  /adapters/customer/buildings/:id/residents/summary — beboeroversikt
 GET  /adapters/customer/units/:unitId/resident          — beboer i enhet
@@ -118,7 +160,6 @@ Alle tjenester publiserer hendelser via HTTP POST til Integration Layer `/events
 I prod (Nova/Kafka): publiser direkte via KafkaEventBus i stedet.
 
 ```typescript
-// Publiser fra en tjeneste
 await fetch(`${INTEGRATION_LAYER_URL}/events/publish`, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
@@ -138,8 +179,8 @@ Gyldige topics (importer fra `integration-layer/src/events/EventTopics.ts`):
 
 ## JWT-auth
 
-Hub utsteder JWT ved innlogging. Alle tjenester validerer med `requireAuth`-middleware.
-Importer fra `integration-layer/src/middleware/jwt.middleware.ts`.
+Hub utsteder JWT ved innlogging. PIN valideres mot bcrypt-hash i `hub.brukere`. Session lagres i `hub.sessions`.
+Alle tjenester validerer med `requireAuth`-middleware fra `integration-layer/src/middleware/jwt.middleware.ts`.
 
 ```typescript
 import { requireAuth, requireRole } from '../middleware/jwt.middleware.js';
@@ -153,25 +194,7 @@ Token-payload (Azure AD-kompatibel):
 - `email` — epost
 - `roles` — ['superadmin'] | ['mdu-selger'] | ['sdu-leder'] | osv.
 
-Env-var: `JWT_SECRET` — **bytt alltid ut dev-secret i prod**.
-
----
-
-## Auth-modell
-
-**Nå (prototype):** Navnebasert — selger velger seg selv ved innlogging.
-
-Testbrukere i Hub:
-- Jørn Haga — superadmin, pin: 0000
-- Nina Lund — MDU salgsleder, pin: 1234
-- Per Andersen — SDU salgsleder, pin: 1234
-- Lise Berg — selger MDU, pin: 1234
-- Kristian Mo — selger SDU, pin: 1234
-
-**Roadmap:**
-1. Nå: navnebasert
-2. Neste: JWT
-3. Produksjon: Azure AD (Telenor Nova / Telenor SSO via OAuth PKCE)
+Env-var: `JWT_SECRET` — bytt alltid ut dev-secret i prod.
 
 Session distribueres via `?hub_session=` URL-parameter fra Hub til alle micro-apps.
 
@@ -180,16 +203,17 @@ Session distribueres via `?hub_session=` URL-parameter fra Hub til alle micro-ap
 ## Salgsflyter
 
 ### SDU-flyt (feltsalg, dør-til-dør)
-1. Salgsleder oppretter runder i **SDU Planner** (velger bygg fra Integration Layer)
+1. Salgsleder oppretter runder i **SDU Planner** → lagres i `sales_core.sdu_runder`
 2. Selger åpner **SDU CRM** → velger seg selv → ser runden → besøker enheter
-3. Besøksutfall logges (kundeoppretting + visitStatus per enhet)
-4. Incentiver styres i **SDU Incentive Manager**
+3. Besøksutfall logges i `sales_core.sdu_besøk`
+4. Incentiver og bonuser styres i **SDU Incentive Manager** → lagres i `sdu.bonuser`
 
 ### MDU-flyt (boligselskap/eiendom)
-MDU CRM → pipeline/kanban → tilbud via Sales Core → kundeportal
+MDU CRM → pipeline/kanban (`sales_core.mdu_deals`) → tilbud (`sales_core.tilbud`) → kundeportal (`mdu.kunder`)
 
 ### War Room-flyt
-Selger → "Send til War Room" → deal fryses → MDU Leder godkjenner/avviser
+Selger → "Send til War Room" → deal.status = 'war-room' → MDU Leder godkjenner/avviser
+→ status oppdateres til 'war-room-godkjent' eller 'war-room-avvist'
 
 ---
 
@@ -202,7 +226,8 @@ Selger → "Send til War Room" → deal fryses → MDU Leder godkjenner/avviser
 - **HTTP-statuskoder:** 400/401/403/404/429/502/503/504 — bruk korrekt kode
 - **Ingen hardkodede secrets** — alltid fra env-vars
 - **Logging:** Bruk logger med `correlationId`, aldri `console.log` i produksjonskode
-- **Tester i Integration Layer:** Integrasjonstester, ikke mocks for forretningslogikk
+- **DB-queries:** Alltid parameterisert — `pool.query('SELECT ... WHERE id = $1', [id])`
+- **Node 18+ på Railway:** `import { randomUUID } from 'crypto'` — ikke `crypto.randomUUID()` globalt
 
 ---
 
@@ -213,8 +238,8 @@ Selger → "Send til War Room" → deal fryses → MDU Leder godkjenner/avviser
 → Legg til i `AdapterRegistry`
 → Eksisterende konsumenter skal ikke trenge å endres
 
-### Ny modul som trenger kundedata (SDU/MDU)
-→ Kall `/adapters/customer/...` — aldri gjenstandene i KAS Core direkte
+### Ny modul som trenger kundedata
+→ Kall `/adapters/customer/...` — aldri direkte mot `hub.brukere` eller KAS Core
 
 ### Ny modul som trenger produktdata
 → Kall `/products` eller `/products/:id`
@@ -222,32 +247,26 @@ Selger → "Send til War Room" → deal fryses → MDU Leder godkjenner/avviser
 ### Publiser hendelse fra en tjeneste
 → POST til `/events/publish` med topic fra `EventTopics.ts`
 
-### Kafka-integrasjon
+### Ny DB-operasjon
+→ Legg til metode i riktig repository-fil under `db/`
+→ Bruk eksisterende `pool.ts` — ikke opprett ny pool
+→ Mappers i `mappers.ts` håndterer API ↔ DB-konvertering
+
+### Kafka-integrasjon (fremtidig)
 → `KAFKA_ENABLED=true` + KafkaJS er klart
 → I dev/prototype: KafkaStub brukes (in-memory event bus)
 
 ---
 
-## Database (PostgreSQL på Railway)
+## Neste migreringssteg (ikke gjort ennå)
 
-Fire schemas — én per tjenestedomene:
-- `hub` — brukere, roller, sessions (`database/schema/hub.sql`)
-- `sales_core` — MDU deals + events + tilbud, SDU runder + besøk (`database/schema/sales_core.sql`)
-- `sdu` — bonusregler, bonuser, månedlig oppsummering (`database/schema/sdu.sql`)
-- `mdu` — MDU kunder, kontrakter, enhetsaktiveringer (`database/schema/mdu.sql`)
-
-Conn-string fra `DATABASE_URL` env-var. Bruk alltid parameteriserte queries — aldri string-concatenation.
-
----
-
-## Planlagte moduler (ikke bygget ennå)
-
-- KafkaEventBus — bytt InMemoryEventBus mot KafkaJS når KAFKA_ENABLED=true på Nova
-- Contract generation (Signicat + BankID)
-- Route planning
-- Campaign planner
-- User access (Telenor SSO / Azure AD — JWT er allerede Azure AD-kompatibelt)
-- CPQ — kaller Integration Layer for produktkatalog + priser, Sales Core for quotes
+- [ ] Migrer `offers.json` → `sales_core.tilbud`
+- [ ] Migrer `events.json` → EventBus (PostgreSQL-backed log)
+- [ ] `sdu.bonusregler` + `sdu.bonuser` — koble SDU Incentive Manager til PostgreSQL
+- [ ] `mdu.kunder` + `mdu.kontrakter` — koble MDU CRM til PostgreSQL
+- [ ] KafkaEventBus — bytt InMemoryEventBus mot KafkaJS når `KAFKA_ENABLED=true` på Nova
+- [ ] Contract generation (Signicat + BankID)
+- [ ] Azure AD / Telenor SSO — JWT er allerede Azure AD-kompatibelt
 
 ---
 
