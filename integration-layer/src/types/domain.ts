@@ -8,6 +8,7 @@ export type DataSource =
   | 'mobile-system'
   | 'tv-system'
   | 'pricing-system'
+  | 'customer-system'
   | 'kafka'
   | 'mock';
 
@@ -125,6 +126,24 @@ export interface Customer {
   accountValue: number;        // månedlig verdi NOK
   interestScores: InterestScores;
   campaigns: Campaign[];
+  meta: SourceMeta;
+}
+
+// ─── Salgskontekst (churn, win-back, oppgraderingspotensial) ──────────────
+
+export type ChurnRisk = 'lav' | 'middels' | 'høy';
+
+export interface SalesContext {
+  personId: string;
+  churnRisk: ChurnRisk;
+  churnRiskScore: number;      // 0–100
+  erWinBackKandidat: boolean;
+  tidligereAvgang?: string;    // ISO date — når sluttet de
+  tidligereProdukt?: string;   // produktnavn
+  avgangsÅrsak?: string;
+  oppgraderingsPotensial: number; // 0–100
+  anbefaltProdukt?: string;
+  livstidsverdi: number;       // estimert LTV i NOK
   meta: SourceMeta;
 }
 
