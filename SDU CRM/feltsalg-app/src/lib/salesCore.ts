@@ -1,6 +1,6 @@
 // ── Sales Core client for SDU CRM ──
 // Fetches round assignments for a seller and persists visit status per unit.
-// Note: SDU sales outcomes (new customers) are still logged to KAS Core — see kasCore.ts.
+// Note: SDU sales outcomes (new customers) logges via Integration Layer — see integrationLayer.ts.
 
 const BASE =
   (import.meta.env.VITE_SALES_CORE_URL as string | undefined) ?? 'http://localhost:3005';

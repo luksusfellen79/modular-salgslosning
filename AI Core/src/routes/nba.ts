@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { fetchResidentsForBuilding } from '../lib/kasCore.js';
+import { fetchResidentsForBuilding } from '../lib/integrationLayer.js';
 import { getSDURecommendation, getMDURecommendation } from '../lib/claude.js';
 import type { NBAOutcome, MDUDealContext } from '../lib/types.js';
 

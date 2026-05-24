@@ -139,6 +139,35 @@ describe('GET /customers', () => {
   });
 });
 
+describe('POST /customers — SDU salg', () => {
+  it('oppretter ny kunde for enhet uten eksisterende kunde', async () => {
+    const res = await request(app)
+      .post('/customers')
+      .send({
+        unitId: 'building-storgata-12-h0304',
+        soldProducts: ['Fiber 500/500'],
+        campaignId: 'camp-nykunde-fiber',
+        campaignName: 'Nykundetilbud Fiber',
+        salesRepName: 'Kristian Mo',
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.created).toBe(true);
+    expect(res.body.customer.customerId).toMatch(/^sdu-/);
+  });
+
+  it('returnerer 404 for ukjent enhet', async () => {
+    const res = await request(app)
+      .post('/customers')
+      .send({ unitId: 'ukjent-enhet-xyz', soldProducts: ['Fiber 500/500'] });
+    expect(res.status).toBe(404);
+  });
+
+  it('returnerer 400 uten unitId', async () => {
+    const res = await request(app).post('/customers').send({ soldProducts: [] });
+    expect(res.status).toBe(400);
+  });
+});
+
 describe('GET /search', () => {
   it('finner beboere på navn', async () => {
     const res = await request(app).get('/search?q=hansen');
@@ -152,6 +181,75 @@ describe('GET /search', () => {
   it('returnerer 400 for kort søk', async () => {
     const res = await request(app).get('/search?q=a');
     expect(res.status).toBe(400);
+  });
+});
+
+describe('GET /products/sdu', () => {
+  it('returnerer aktive SDU-produkter', async () => {
+    const res = await request(app).get('/products/sdu?activeOnly=true');
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body.length).toBeGreaterThan(0);
+    expect(res.body[0].productId).toMatch(/^sdu-/);
+  });
+
+  it('returnerer ett produkt på ID', async () => {
+    const res = await request(app).get('/products/sdu/sdu-fiber-500');
+    expect(res.status).toBe(200);
+    expect(res.body.productId).toBe('sdu-fiber-500');
+  });
+
+  it('returnerer 404 for ukjent produkt', async () => {
+    const res = await request(app).get('/products/sdu/ukjent-produkt');
+    expect(res.status).toBe(404);
+  });
+});
+
+describe('POST /products/sdu/:productId/incentives', () => {
+  it('legger til insentiv på produkt', async () => {
+    const res = await request(app)
+      .post('/products/sdu/sdu-fiber-250/incentives')
+      .send({
+        name: 'Testbonus',
+        description: 'Test',
+        type: 'bonus_per_sale',
+        value: 100,
+        currency: 'NOK',
+        validFrom: '2026-01-01',
+        validUntil: '2026-12-31',
+        visibleToSeller: true,
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.incentives.some((i: { name: string }) => i.name === 'Testbonus')).toBe(true);
+  });
+});
+
+describe('GET /products/mdu', () => {
+  it('returnerer aktive MDU-pakker', async () => {
+    const res = await request(app).get('/products/mdu?activeOnly=true');
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body.length).toBe(4);
+    expect(res.body[0].packageId).toMatch(/^mdu-pkg-/);
+  });
+
+  it('returnerer MDU-komponenter', async () => {
+    const res = await request(app).get('/products/mdu/components');
+    expect(res.status).toBe(200);
+    expect(res.body.length).toBeGreaterThan(0);
+  });
+
+  it('returnerer pakke med innebygde komponenter', async () => {
+    const res = await request(app).get('/products/mdu/mdu-pkg-m');
+    expect(res.status).toBe(200);
+    expect(res.body.packageId).toBe('mdu-pkg-m');
+    expect(Array.isArray(res.body.defaultComponents)).toBe(true);
+    expect(res.body.defaultComponents[0].componentId).toBeDefined();
+  });
+
+  it('returnerer 404 for ukjent pakke', async () => {
+    const res = await request(app).get('/products/mdu/ukjent-pakke');
+    expect(res.status).toBe(404);
   });
 });
 

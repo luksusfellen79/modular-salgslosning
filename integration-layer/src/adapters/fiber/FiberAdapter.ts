@@ -2,6 +2,7 @@
 // I produksjon: erstatt mock-data med HTTP-kall til det ekte fiber-systemet.
 // Adapter-grensesnittet forblir uendret — kun implementasjon byttes.
 
+import { v4 as uuidv4 } from 'uuid';
 import { IProductAdapter, ICustomerAdapter } from '../IAdapter.js';
 import {
   DataSource,
@@ -14,6 +15,21 @@ import {
   InterestScores,
   SourceMeta,
 } from '../../types/domain.js';
+import { logger } from '../../logger.js';
+
+export interface SDUSaleParams {
+  unitId: string;
+  soldProducts: string[];
+  campaignId?: string;
+  campaignName?: string;
+  salesRepName?: string;
+  notes?: string;
+}
+
+export interface SDUSaleResult {
+  customer: Customer;
+  created: boolean;
+}
 
 const SOURCE: DataSource = 'fiber-system';
 
@@ -207,6 +223,9 @@ export class FiberAdapter implements IProductAdapter, ICustomerAdapter {
   readonly sourceId: DataSource = 'fiber-system';
   readonly name = 'Fiber System (mock)';
 
+  /** Kunder opprettet via SDU CRM (runtime, ikke persistert i PoC) */
+  private runtimeCustomers: Customer[] = [];
+
   async isHealthy(): Promise<boolean> {
     return true;
   }
@@ -248,15 +267,80 @@ export class FiberAdapter implements IProductAdapter, ICustomerAdapter {
   }
 
   async getCustomer(customerId: string): Promise<Customer | null> {
+    const runtime = this.runtimeCustomers.find(c => c.customerId === customerId);
+    if (runtime) return runtime;
+
     const r = RESIDENTS.find(x => x.customerId === customerId);
     if (!r) return null;
     return this._residentToCustomer(r);
   }
 
   async getCustomersByBuilding(buildingId: string): Promise<Customer[]> {
-    return RESIDENTS
+    const seedCustomers = RESIDENTS
       .filter(r => r.buildingId === buildingId && r.isExistingCustomer)
       .map(r => this._residentToCustomer(r));
+    const runtimeInBuilding = this.runtimeCustomers.filter(c => c.buildingId === buildingId);
+    return [...seedCustomers, ...runtimeInBuilding];
+  }
+
+  /** SDU CRM: opprett kunde ved salg (bakoverkompatibel med KAS Core POST /customers) */
+  async registerSDUSale(params: SDUSaleParams): Promise<SDUSaleResult> {
+    const { unitId, soldProducts, campaignId, campaignName, salesRepName, notes } = params;
+
+    const resident = RESIDENTS.find(r => r.unitId === unitId);
+    if (!resident) {
+      throw new Error(`Ingen beboer funnet for unitId: ${unitId}`);
+    }
+
+    const existingRuntime = this.runtimeCustomers.find(c => c.unitId === unitId);
+    if (existingRuntime) {
+      logger.info('SDU sale registered (existing customer)', {
+        customerId: existingRuntime.customerId,
+        unitId,
+        soldProducts,
+      });
+      return { customer: existingRuntime, created: false };
+    }
+
+    const existingSeed = RESIDENTS.find(r => r.unitId === unitId && r.isExistingCustomer);
+    if (existingSeed) {
+      const customer = this._residentToCustomer(existingSeed);
+      logger.info('SDU sale registered (existing customer)', {
+        customerId: customer.customerId,
+        unitId,
+        soldProducts,
+      });
+      return { customer, created: false };
+    }
+
+    const customerId = `sdu-${uuidv4()}`;
+    const newCustomer: Customer = {
+      customerId,
+      name: resident.name,
+      phone: resident.phone ?? '',
+      email: `${resident.name.toLowerCase().replace(/\s+/g, '.')}@example.com`,
+      unitId: resident.unitId,
+      buildingId: resident.buildingId,
+      address: resident.buildingId.replace('building-', '').replace(/-/g, ' '),
+      postalCode: '0155',
+      city: 'Oslo',
+      existingProducts: soldProducts.map((name, i) => ({
+        productId: `${name}-${customerId}-${i}`,
+        name,
+        monthlyCost: 0,
+        activeSince: new Date().toISOString(),
+      })),
+      previousProducts: [],
+      customerSince: new Date().toISOString(),
+      accountValue: 0,
+      interestScores: resident.interestScores,
+      campaigns: resident.campaigns.map(c => ({ ...c, meta: meta() })),
+      meta: meta(),
+    };
+
+    this.runtimeCustomers.push(newCustomer);
+    logger.info('SDU new customer created', { customerId, unitId, soldProducts, campaignName });
+    return { customer: newCustomer, created: true };
   }
 
   async searchResidents(query: string): Promise<Resident[]> {

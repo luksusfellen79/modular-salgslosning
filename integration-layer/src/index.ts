@@ -21,6 +21,8 @@ import { createProductsRouter } from './api/products.js';
 import { createCustomersRouter } from './api/customers.js';
 import { createPricingRouter } from './api/pricing.js';
 import { createCustomerAdapterRouter } from './adapters/customer/CustomerRouter.js';
+import { createSduProductsRouter } from './api/sdu-products.js';
+import { createMduProductsRouter } from './api/mdu-products.js';
 import { createEventBusRouter } from './events/EventBusRouter.js';
 import { correlationIdMiddleware } from './middleware/jwt.middleware.js';
 import { HealthResponse } from './types/domain.js';
@@ -48,8 +50,9 @@ registry.registerProductAdapter(mobileAdapter);
 registry.registerProductAdapter(tvAdapter);
 registry.registerPricingAdapter(pricingAdapter);
 
-// CustomerAdapter er ny master for alle kundedata
-registry.registerCustomerAdapter(customerAdapter);
+// FiberAdapter leverer beboerdata (SDU) — samme bygg-ID-er som Sales Core/KAS Core mock
+registry.registerCustomerAdapter(fiberAdapter);
+// CustomerAdapter (MDU kundeintelligens) eksponeres kun via /adapters/customer/*
 
 // ─── Kafka (stub i POC — aktiveres med KAFKA_ENABLED=true) ─────────────────────
 
@@ -105,11 +108,13 @@ app.get('/health', async (_req, res) => {
 
 // ─── API-ruter ──────────────────────────────────────────────────────────────────────
 
-// Produktkatalog
+// Produktkatalog — SDU/MDU-ruter må registreres før /:productId
+app.use('/products', createSduProductsRouter(eventBus));
+app.use('/products', createMduProductsRouter());
 app.use('/products', createProductsRouter(registry));
 
 // Kunder og beboere (bakoverkompatibelt med KAS Core mock URL-er)
-app.use('/', createCustomersRouter(registry));
+app.use('/', createCustomersRouter(registry, { fiberAdapter, eventBus, cache }));
 
 // Prising og kampanjer
 app.use('/pricing', createPricingRouter(registry));

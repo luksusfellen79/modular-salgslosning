@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { fetchSellers, fetchRounds, createRound, updateRoundStatus, updateUnitStatus, createSeller } from './lib/salesCore';
-import { fetchResidents } from './lib/kasCore';
+import { fetchResidents } from './lib/integrationLayer';
 import { BUILDINGS, Resident, Round, RoundStatus, Seller, UnitVisitStatus } from './lib/types';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────

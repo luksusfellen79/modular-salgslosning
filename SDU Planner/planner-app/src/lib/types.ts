@@ -1,4 +1,4 @@
-// ── Shared types (mirrors Sales Core + KAS Core) ──
+// ── Shared types (mirrors Sales Core + Integration Layer) ──
 
 export type SellerRole = 'seller' | 'manager';
 
@@ -39,7 +39,7 @@ export interface Round {
   updatedAt: string;
 }
 
-// ── KAS Core types ──
+// ── Integration Layer types ──
 
 export interface Resident {
   unitId: string;

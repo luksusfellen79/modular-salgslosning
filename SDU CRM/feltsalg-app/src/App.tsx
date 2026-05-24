@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { Resident, Campaign, UpsellProduct, VisitStatus, VisitOutcome } from './lib/types';
-import { fetchResidents, logSDUOutcome, fetchNBA, logNBAOutcome, NBARecommendation } from './lib/kasCore';
+import { fetchResident, logSDUOutcome, fetchNBA, logNBAOutcome, publishVisitCompleted, NBARecommendation } from './lib/integrationLayer';
 import { fetchSellers, fetchRoundsForSeller, updateUnitVisit, Round, RoundUnit, Seller, UnitVisitStatus } from './lib/salesCore';
 
 // ── Telenor logo ──────────────────────────────────────────────────────────────
@@ -722,14 +722,11 @@ function ResidentDetail({
   const [nbaLoading, setNbaLoading] = useState(true);
 
   useEffect(() => {
-    fetchResidents(unit.buildingId)
-      .then(residents => {
-        const found = residents.find(r => r.unitId === unit.unitId);
-        setResident(found ?? null);
-      })
+    fetchResident(unit.unitId)
+      .then(setResident)
       .catch(() => setResident(null))
       .finally(() => setLoadingResident(false));
-  }, [unit.buildingId, unit.unitId]);
+  }, [unit.unitId]);
 
   // Fetch NBA recommendation in parallel
   useEffect(() => {
@@ -752,7 +749,7 @@ function ResidentDetail({
       try {
         const soldProducts = outcome === 'sold' ? [campaign.product, ...extraProducts] : [];
 
-        // 1. Log outcome to KAS Core
+        // 1. Logg salg via Integration Layer
         await logSDUOutcome({
           outcome,
           unitId: resident.unitId,
@@ -771,7 +768,18 @@ function ResidentDetail({
           outcome === 'followup' ? 'Oppfølging avtalt' : outcome === 'marketing' ? 'Marketing-kampanje' : undefined
         );
 
-        // 3. Log NBA outcome (fire-and-forget learning signal)
+        // 3. Publiser visit.completed til Integration Layer EventBus
+        publishVisitCompleted({
+          unitId: resident.unitId,
+          buildingId: unit.buildingId,
+          outcome,
+          salesRepName: seller.name,
+          roundId: round.id,
+          campaignId: campaign.id,
+          soldProducts,
+        });
+
+        // 4. Log NBA outcome (fire-and-forget learning signal)
         if (nbaRec) {
           logNBAOutcome({
             unitId: resident.unitId,
@@ -793,7 +801,7 @@ function ResidentDetail({
         onVisitLogged(resident.unitId, status);
 
         const labels: Record<VisitOutcome, string> = {
-          sold:      '✓ Solgt! Kunde opprettet i KAS Core',
+          sold:      '✓ Solgt! Kunde opprettet',
           no_answer: 'Registrert: Ikke hjemme',
           rejected:  'Registrert: Ikke interessert',
           followup:  'Oppfølging registrert',
@@ -894,11 +902,11 @@ function ResidentDetail({
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z" />
             </svg>
-            <span className="text-sm">Henter kundedata fra KAS Core…</span>
+            <span className="text-sm">Henter kundedata…</span>
           </div>
         ) : !resident ? (
           <div className="bg-white rounded-xl p-4 border border-gray-100 m-4 text-sm text-gray-500 text-center">
-            Fant ikke beboerdata i KAS Core for denne enheten.
+            Fant ikke beboerdata for denne enheten.
           </div>
         ) : orderStep === 'accept' && pendingCampaign ? (
           /* ── Steg 3: Kundeaksept (snudd skjerm) ── */

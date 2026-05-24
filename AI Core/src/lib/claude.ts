@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import type { Resident } from './kasCore.js';
+import type { Resident } from './integrationLayer.js';
 import type { NBAOutcome, NBARecommendation, MDUDealContext } from './types.js';
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });

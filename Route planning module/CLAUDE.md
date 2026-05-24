@@ -54,7 +54,7 @@ export interface Unit {
   buildingId: string;
   unitNumber: string;       // "H0201", "3B", "Leil. 12" etc.
   floor: number;
-  residentName?: string;    // hentet fra KAS Core (mock i dev)
+  residentName?: string;    // hentet fra Integration Layer
   isExistingCustomer: boolean;
   existingProducts?: string[];  // hva kunden har i dag, f.eks. ["Fiber 500", "TV Basis"]
 }
@@ -147,26 +147,17 @@ Events denne modulen publiserer:
 
 ---
 
-## KAS Core Client (mock i dev)
+## Integration Layer Client
 
-Lag `src/kas-core/kas-core-client.ts` — en klient for å hente beboerdata.
+Lag `src/integration-layer/integration-layer-client.ts` — henter beboerdata fra Integration Layer.
 
 ```typescript
-export class KasCoreClient {
+export class IntegrationLayerClient {
   async getResidentsForBuilding(buildingId: string, correlationId: string): Promise<Resident[]>
-}
-
-export interface Resident {
-  unitId: string;
-  name: string;
-  isExistingCustomer: boolean;
-  existingProducts: string[];
 }
 ```
 
-I `NODE_ENV=development`: returner mock-data (realistiske norske navn, noen eksisterende kunder). Beboere med `isExistingCustomer: true` skal ha et utvalg av `["Fiber 500", "Fiber 1000", "TV Basis", "Mobil Premium"]`.
-
-I produksjon: kall `KASCORE_URL` med `x-api-key: KASCORE_API_KEY`. Kast `KasCoreError` på feil.
+Kall `INTEGRATION_LAYER_URL/buildings/:buildingId/residents`. Kast `IntegrationLayerError` på feil.
 
 ---
 
@@ -292,9 +283,8 @@ Lag `.env.example`:
 ROUTE_PLANNER_PORT=3003
 NODE_ENV=development
 
-# KAS Core
-KASCORE_URL=http://localhost:3004
-KASCORE_API_KEY=key-route-planner
+# Integration Layer
+INTEGRATION_LAYER_URL=http://localhost:3010
 
 # EventBus
 EVENT_BUS_TYPE=inmemory
@@ -319,8 +309,8 @@ route-planning-module/
 │   │   ├── event-bus.interface.ts
 │   │   ├── in-memory-event-bus.ts
 │   │   └── kafka-event-bus.ts
-│   ├── kas-core/
-│   │   └── kas-core-client.ts
+│   ├── integration-layer/
+│   │   └── integration-layer-client.ts
 │   ├── seed/
 │   │   └── seed-data.ts
 │   ├── storage/
@@ -382,7 +372,7 @@ route-planning-module/
 
 - Kartvisning / geografisk optimering av rute
 - Push-varsler til feltselger
-- Faktisk KAS Core-integrasjon (kun mock)
+- Faktisk Integration Layer-integrasjon (klient på plass)
 - Autentisering på endepunktene
 - Bulk-import av adresser
 
@@ -393,7 +383,7 @@ route-planning-module/
 1. `src/logger.ts`
 2. `src/types/index.ts`
 3. `src/events/` — interface, InMemory, Kafka-stub
-4. `src/kas-core/kas-core-client.ts`
+4. `src/integration-layer/integration-layer-client.ts`
 5. `src/storage/building-store.ts`
 6. `src/storage/route-store.ts`
 7. `src/storage/visit-store.ts`

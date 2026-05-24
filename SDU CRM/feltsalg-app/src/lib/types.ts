@@ -1,4 +1,4 @@
-// ── Shared types matching KAS Core ──
+// ── Shared types matching Integration Layer domain ──
 
 export interface InterestScores {
   sikre: number;
@@ -59,7 +59,7 @@ export interface VisitStatus {
   loggedAt: string;
 }
 
-// ── Known buildings (from KAS Core seed) ──
+// ── Known buildings (fra Integration Layer / Sales Core seed) ──
 
 export interface Building {
   id: string;

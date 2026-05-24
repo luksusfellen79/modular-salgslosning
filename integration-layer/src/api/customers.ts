@@ -2,9 +2,18 @@
 // Bakoverkompatibel med KAS Core mock sitt API-design.
 
 import { Router, Request, Response } from 'express';
+import { randomUUID } from 'crypto';
 import { AdapterRegistry } from '../registry/AdapterRegistry.js';
+import { FiberAdapter } from '../adapters/fiber/FiberAdapter.js';
+import { IEventBus } from '../events/IEventBus.js';
+import { Topics } from '../events/EventTopics.js';
+import { InMemoryCache } from '../cache/InMemoryCache.js';
+import { logger } from '../logger.js';
 
-export function createCustomersRouter(registry: AdapterRegistry): Router {
+export function createCustomersRouter(
+  registry: AdapterRegistry,
+  deps?: { fiberAdapter?: FiberAdapter; eventBus?: IEventBus; cache?: InMemoryCache },
+): Router {
   const router = Router();
 
   // GET /buildings/:buildingId/residents — ResidentSummary[] (brukes av route-planning)
@@ -59,6 +68,84 @@ export function createCustomersRouter(registry: AdapterRegistry): Router {
     }
     const results = await registry.searchResidents(q.trim());
     res.json(results);
+  });
+
+  // POST /customers — SDU CRM: opprett kunde ved salg (bakoverkompatibel med KAS Core mock)
+  router.post('/customers', async (req: Request, res: Response) => {
+    const fiberAdapter = deps?.fiberAdapter;
+    if (!fiberAdapter) {
+      res.status(503).json({ error: 'SDU customer registration not available' });
+      return;
+    }
+
+    const {
+      unitId,
+      soldProducts = [],
+      campaignId,
+      campaignName,
+      salesRepName,
+      notes,
+    } = req.body as {
+      unitId?: string;
+      soldProducts?: string[];
+      campaignId?: string;
+      campaignName?: string;
+      salesRepName?: string;
+      notes?: string;
+    };
+
+    if (!unitId) {
+      res.status(400).json({ error: 'unitId er påkrevd' });
+      return;
+    }
+
+    try {
+      const result = await fiberAdapter.registerSDUSale({
+        unitId,
+        soldProducts,
+        campaignId,
+        campaignName,
+        salesRepName,
+        notes,
+      });
+
+      deps?.cache?.delete(`residents:full:${result.customer.buildingId}`);
+      deps?.cache?.delete(`resident:${unitId}`);
+
+      if (deps?.eventBus) {
+        await deps.eventBus.publish({
+          eventId: randomUUID(),
+          eventType: Topics.CUSTOMER_CREATED,
+          source: 'fiber-system',
+          occurredAt: new Date().toISOString(),
+          payload: {
+            customerId: result.customer.customerId,
+            unitId,
+            buildingId: result.customer.buildingId,
+            soldProducts,
+            campaignId,
+            campaignName,
+            salesRepName,
+            created: result.created,
+          },
+        }).catch(err => {
+          logger.error('Failed to publish customer.created', { error: err });
+        });
+      }
+
+      res.status(result.created ? 201 : 200).json({
+        customer: result.customer,
+        created: result.created,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      if (message.includes('Ingen beboer')) {
+        res.status(404).json({ error: message });
+        return;
+      }
+      logger.error('POST /customers failed', { error: err });
+      res.status(500).json({ error: 'Kunne ikke registrere SDU-salg' });
+    }
   });
 
   return router;

@@ -15,62 +15,46 @@ function ensureDataDir(): void {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
+function toUnitId(buildingId: string, unitNumber: string): string {
+  return `${buildingId}-${unitNumber.toLowerCase().replace(/\s/g, '-')}`;
+}
+
 function generateUnitsForBuilding(
   buildingId: string,
   floors: number,
   unitsPerFloor: number,
-  existingCustomerCount: number
 ): Unit[] {
   const units: Unit[] = [];
-  let unitIndex = 0;
   for (let floor = 1; floor <= floors; floor++) {
     for (let pos = 1; pos <= unitsPerFloor; pos++) {
-      unitIndex++;
-      const isExisting = unitIndex <= existingCustomerCount;
+      const unitNumber = `H${String(floor).padStart(2, '0')}${String(pos).padStart(2, '0')}`;
       units.push({
-        id: `${buildingId}-unit-${unitIndex}`,
+        id: toUnitId(buildingId, unitNumber),
         buildingId,
-        unitNumber: `H0${floor}0${pos}`,
+        unitNumber,
         floor,
-        isExistingCustomer: isExisting,
-        existingProducts: isExisting ? pickProducts(unitIndex) : [],
+        isExistingCustomer: false,
+        existingProducts: [],
       });
     }
   }
   return units;
 }
 
-function generateRowHouseUnits(
-  buildingId: string,
-  total: number,
-  existingCustomerCount: number
-): Unit[] {
+function generateRowHouseUnits(buildingId: string, total: number): Unit[] {
   const units: Unit[] = [];
   for (let i = 1; i <= total; i++) {
-    const isExisting = i <= existingCustomerCount;
+    const unitNumber = `Enhet ${i}`;
     units.push({
-      id: `${buildingId}-unit-${i}`,
+      id: toUnitId(buildingId, unitNumber),
       buildingId,
-      unitNumber: `Nr. ${i}`,
+      unitNumber,
       floor: 1,
-      isExistingCustomer: isExisting,
-      existingProducts: isExisting ? pickProducts(i) : [],
+      isExistingCustomer: false,
+      existingProducts: [],
     });
   }
   return units;
-}
-
-const PRODUCT_SETS = [
-  ['Fiber 500'],
-  ['Fiber 1000'],
-  ['TV Basis'],
-  ['Mobil Premium'],
-  ['Fiber 500', 'TV Basis'],
-  ['Fiber 1000', 'Mobil Premium'],
-];
-
-function pickProducts(seed: number): string[] {
-  return PRODUCT_SETS[seed % PRODUCT_SETS.length] ?? ['Fiber 500'];
 }
 
 export function seedIfEmpty(): void {
@@ -81,7 +65,7 @@ export function seedIfEmpty(): void {
   if (!fs.existsSync(BUILDINGS_FILE)) {
     const buildings: Building[] = [
       {
-        id: 'building-1',
+        id: 'building-storgata-12',
         address: 'Storgata 12',
         city: 'Oslo',
         postalCode: '0155',
@@ -92,7 +76,7 @@ export function seedIfEmpty(): void {
         createdAt: new Date().toISOString(),
       },
       {
-        id: 'building-2',
+        id: 'building-kirkeveien-45',
         address: 'Kirkeveien 45',
         city: 'Oslo',
         postalCode: '0368',
@@ -102,7 +86,7 @@ export function seedIfEmpty(): void {
         createdAt: new Date().toISOString(),
       },
       {
-        id: 'building-3',
+        id: 'building-ekebergveien-14',
         address: 'Ekebergveien 14',
         city: 'Oslo',
         postalCode: '1178',
@@ -118,9 +102,9 @@ export function seedIfEmpty(): void {
 
   if (!fs.existsSync(UNITS_FILE)) {
     const units: Unit[] = [
-      ...generateUnitsForBuilding('building-1', 6, 4, 6),
-      ...generateUnitsForBuilding('building-2', 3, 6, 4),
-      ...generateRowHouseUnits('building-3', 12, 2),
+      ...generateUnitsForBuilding('building-storgata-12', 6, 4),
+      ...generateUnitsForBuilding('building-kirkeveien-45', 3, 6),
+      ...generateRowHouseUnits('building-ekebergveien-14', 12),
     ];
     fs.writeFileSync(UNITS_FILE, JSON.stringify(units, null, 2));
     logger.info('seed_units_written', { count: units.length });
@@ -133,7 +117,7 @@ export function seedIfEmpty(): void {
         date: today,
         salesRepId: 'rep-field-1',
         salesRepName: 'Jonas Mikkelsen',
-        buildingIds: ['building-1', 'building-2'],
+        buildingIds: ['building-storgata-12', 'building-kirkeveien-45'],
         status: 'planned',
         createdBy: 'planner-1',
         createdAt: new Date().toISOString(),
@@ -143,7 +127,7 @@ export function seedIfEmpty(): void {
         date: today,
         salesRepId: 'rep-field-2',
         salesRepName: 'Amina Osei',
-        buildingIds: ['building-3'],
+        buildingIds: ['building-ekebergveien-14'],
         status: 'planned',
         createdBy: 'planner-1',
         createdAt: new Date().toISOString(),

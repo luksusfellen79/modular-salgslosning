@@ -1,4 +1,6 @@
-const BASE = (import.meta.env.VITE_KAS_CORE_URL as string | undefined) ?? 'http://localhost:3001';
+const BASE =
+  (import.meta.env.VITE_INTEGRATION_LAYER_URL as string | undefined)
+  ?? 'https://integration-layer-production.up.railway.app';
 
 export type ProductCategory = 'internett' | 'tv' | 'mobil' | 'sikkerhet' | 'strømming' | 'utstyr';
 
@@ -49,30 +51,30 @@ export const CATEGORY_ICONS: Record<ProductCategory, string> = {
 
 export async function fetchSDUProducts(): Promise<SDUProduct[]> {
   const res = await fetch(`${BASE}/products/sdu?activeOnly=true`);
-  if (!res.ok) throw new Error(`KAS Core: ${res.status}`);
+  if (!res.ok) throw new Error(`Integration Layer: ${res.status}`);
   return res.json() as Promise<SDUProduct[]>;
 }
 
 export async function addProductIncentive(
   productId: string,
-  incentive: Omit<Incentive, 'id'>
+  incentive: Omit<Incentive, 'id'>,
 ): Promise<SDUProduct> {
   const res = await fetch(`${BASE}/products/sdu/${productId}/incentives`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(incentive),
   });
-  if (!res.ok) throw new Error(`KAS Core POST incentive: ${res.status}`);
+  if (!res.ok) throw new Error(`Integration Layer POST incentive: ${res.status}`);
   return res.json() as Promise<SDUProduct>;
 }
 
 export async function removeProductIncentive(
   productId: string,
-  incentiveId: string
+  incentiveId: string,
 ): Promise<SDUProduct> {
   const res = await fetch(`${BASE}/products/sdu/${productId}/incentives/${incentiveId}`, {
     method: 'DELETE',
   });
-  if (!res.ok) throw new Error(`KAS Core DELETE incentive: ${res.status}`);
+  if (!res.ok) throw new Error(`Integration Layer DELETE incentive: ${res.status}`);
   return res.json() as Promise<SDUProduct>;
 }

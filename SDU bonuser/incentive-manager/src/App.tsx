@@ -9,7 +9,7 @@ import {
   ProductCategory,
   CATEGORY_LABELS,
   CATEGORY_ICONS,
-} from './lib/kasCore';
+} from './lib/integrationLayer';
 
 // ─── DESIGN TOKENS ────────────────────────────────────────────────────────────
 const T = {
@@ -126,7 +126,7 @@ const s = {
   navRight:   { marginLeft: 'auto', display: 'flex', gap: 8 } as React.CSSProperties,
   navTab: (a: boolean) => ({ padding: '6px 16px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: a ? 700 : 400, background: a ? T.blue : 'transparent', color: a ? T.white : T.gray600, transition: 'all 0.15s' }) as React.CSSProperties,
   pendingBadge: { background: T.amber, color: T.white, borderRadius: 10, padding: '1px 7px', fontSize: 11, fontWeight: 700, marginLeft: 4 } as React.CSSProperties,
-  kasCoreBanner: (ok: boolean) => ({ background: ok ? T.greenLight : T.amberLight, borderBottom: `1px solid ${ok ? T.green : T.amber}50`, padding: '7px 32px', fontSize: 12, color: ok ? '#065f46' : '#92400e', display: 'flex', alignItems: 'center', gap: 6 }) as React.CSSProperties,
+  ilBanner: (ok: boolean) => ({ background: ok ? T.greenLight : T.amberLight, borderBottom: `1px solid ${ok ? T.green : T.amber}50`, padding: '7px 32px', fontSize: 12, color: ok ? '#065f46' : '#92400e', display: 'flex', alignItems: 'center', gap: 6 }) as React.CSSProperties,
   agencyTabsWrap: { background: T.white, borderBottom: `1px solid ${T.gray100}`, padding: '0 32px', display: 'flex', gap: 0, overflowX: 'auto' } as React.CSSProperties,
   agencyTab: (a: boolean) => ({ padding: '15px 22px', border: 'none', borderBottom: a ? `3px solid ${T.blue}` : '3px solid transparent', background: 'transparent', cursor: 'pointer', fontSize: 14, fontWeight: a ? 700 : 400, color: a ? T.blue : T.gray600, whiteSpace: 'nowrap', transition: 'all 0.15s', marginBottom: -1 }) as React.CSSProperties,
   page: { maxWidth: 1100, margin: '0 auto', padding: '28px 32px 56px' } as React.CSSProperties,
@@ -483,7 +483,7 @@ function IncentiveView({ agencies, products, loading, proposals, bonusLadder, on
         </div>
 
         {loading ? (
-          <div style={s.spinner}>Laster produkter fra KAS Core…</div>
+          <div style={s.spinner}>Laster produkter fra Integration Layer…</div>
         ) : (
           <div style={s.grid2}>
             {/* Products + incentives */}
@@ -603,7 +603,7 @@ function IncentiveView({ agencies, products, loading, proposals, bonusLadder, on
         <div style={s.meta}>
           <span><span style={{ color: T.gray400 }}>SF ID: </span><span style={{ color: T.gray600, fontFamily: 'monospace' }}>{agency?.sfId}</span></span>
           <span><span style={{ color: T.gray400 }}>E-post: </span><span style={{ color: T.gray600 }}>{agency?.email || '—'}</span></span>
-          <span><span style={{ color: T.gray400 }}>Produktkatalog: </span><span style={{ color: T.gray600 }}>KAS Core</span></span>
+          <span><span style={{ color: T.gray400 }}>Produktkatalog: </span><span style={{ color: T.gray600 }}>Integration Layer</span></span>
         </div>
       </div>
     </>
@@ -921,7 +921,7 @@ export default function App() {
   const [agencies, setAgencies]       = useState<Agency[]>(INIT_AGENCIES);
   const [products, setProducts]       = useState<SDUProduct[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
-  const [kasOk, setKasOk]            = useState(false);
+  const [catalogOk, setCatalogOk]    = useState(false);
 
   const [bonusLadder, setBonusLadder] = useState<Record<string, Record<string, number>>>(() => {
     const d: Record<string, Record<string, number>> = {};
@@ -942,11 +942,11 @@ export default function App() {
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 2800); };
 
-  // Fetch products from KAS Core
+  // Fetch products from Integration Layer
   useEffect(() => {
     fetchSDUProducts()
-      .then(prods => { setProducts(prods); setKasOk(true); })
-      .catch(() => setKasOk(false))
+      .then(prods => { setProducts(prods); setCatalogOk(true); })
+      .catch(() => setCatalogOk(false))
       .finally(() => setLoadingProducts(false));
   }, []);
 
@@ -1015,9 +1015,9 @@ export default function App() {
     try {
       const updated = await addProductIncentive(p.productId, p.incentive);
       setProducts(prev => prev.map(prod => prod.productId === updated.productId ? updated : prod));
-      showToast('Insentiv godkjent og live i KAS Core');
+      showToast('Insentiv godkjent og live');
     } catch {
-      showToast('Godkjent (KAS Core offline — lokal oppdatering)');
+      showToast('Godkjent (Integration Layer offline — lokal oppdatering)');
       setProducts(prev => prev.map(prod =>
         prod.productId === p.productId
           ? { ...prod, incentives: [...prod.incentives, { ...p.incentive, id: uid() }] }
@@ -1115,13 +1115,13 @@ export default function App() {
         </div>
       </nav>
 
-      {/* KAS Core connection banner */}
-      <div style={s.kasCoreBanner(!loadingProducts)}>
+      {/* Integration Layer connection banner */}
+      <div style={s.ilBanner(!loadingProducts)}>
         {loadingProducts
-          ? '⏳ Kobler til KAS Core…'
-          : kasOk
-            ? `✓ Produktkatalog hentet fra KAS Core — ${products.length} SDU-produkter`
-            : '⚠ KAS Core utilgjengelig — viser tomme produkter. Sjekk at KAS Core kjører.'
+          ? '⏳ Kobler til Integration Layer…'
+          : catalogOk
+            ? `✓ Produktkatalog hentet fra Integration Layer — ${products.length} SDU-produkter`
+            : '⚠ Integration Layer utilgjengelig — viser tomme produkter. Sjekk at Integration Layer kjører.'
         }
       </div>
 

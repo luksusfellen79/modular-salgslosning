@@ -2,13 +2,13 @@
 import { Router, Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { buildingStore } from '../storage/building-store';
-import { KasCoreClient } from '../kas-core/kas-core-client';
+import { IntegrationLayerClient } from '../integration-layer/integration-layer-client';
 import { visitStore } from '../storage/visit-store';
 import { Building } from '../types';
 import logger from '../logger';
 
 const router = Router();
-const kasCore = new KasCoreClient();
+const integrationLayer = new IntegrationLayerClient();
 
 router.get('/', (req: Request, res: Response) => {
   const correlationId = (req.headers['x-correlation-id'] as string) ?? uuidv4();
@@ -27,7 +27,7 @@ router.get('/:id', async (req: Request, res: Response) => {
   let enrichedUnits = units;
 
   try {
-    const residents = await kasCore.getResidentsForBuilding(building.id, correlationId);
+    const residents = await integrationLayer.getResidentsForBuilding(building.id, correlationId);
     enrichedUnits = units.map((u) => {
       const resident = residents.find((r) => r.unitId === u.id);
       if (!resident) return u;
@@ -39,7 +39,7 @@ router.get('/:id', async (req: Request, res: Response) => {
       };
     });
   } catch (err) {
-    logger.warn('kas_core_enrichment_failed', {
+    logger.warn('integration_layer_enrichment_failed', {
       buildingId: building.id,
       error: err instanceof Error ? err.message : String(err),
       correlationId,
