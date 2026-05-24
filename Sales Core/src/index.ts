@@ -9,15 +9,42 @@ import { OfferEvent } from './types';
 import { ensureSeedData } from './seed';
 import { router } from './api/router';
 import { logger } from './logger';
+import { usePostgres } from './db/pool';
 
 dotenv.config();
 
 export const app = express();
 app.use(cors({ origin: '*' }));
 app.use(express.json());
+
+const seedReady = ensureSeedData().catch((err) => {
+  logger.error({ message: 'Seed initialization failed', error: String(err) });
+  throw err;
+});
+
+export async function waitForReady(): Promise<void> {
+  await seedReady;
+}
+
+app.use(async (_req, _res, next) => {
+  try {
+    await seedReady;
+    next();
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.use((err: Error, _req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (res.headersSent) return next(err);
+  res.status(503).json({ error: 'Service unavailable', message: err.message });
+});
+
 app.use(router);
 
-ensureSeedData();
+if (usePostgres()) {
+  logger.info({ message: 'Sales Core using PostgreSQL storage' });
+}
 
 eventBus.subscribe('offer.event', async (payload) => {
   const event = payload as OfferEvent;

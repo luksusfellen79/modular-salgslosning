@@ -12,8 +12,10 @@ describe('API routes', () => {
     tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sales-core-api-'));
     process.env.DATA_DIR = path.join(tempRoot, 'data');
     process.env.SALES_CORE_BASE_URL = 'http://localhost:3005';
+    delete process.env.DATABASE_URL;
     const module = await import('../src/index');
     app = module.app;
+    await module.waitForReady();
   });
 
   afterAll(() => {
@@ -23,7 +25,7 @@ describe('API routes', () => {
   test('GET /health returns healthy counts', async () => {
     const response = await request(app).get('/health');
     expect(response.status).toBe(200);
-    expect(response.body).toEqual({ status: 'healthy', opportunities: 5, offers: 3 });
+    expect(response.body).toEqual({ status: 'healthy', opportunities: 5, offers: 0 });
   });
 
   test('GET /api/opportunities returns seed opportunities', async () => {

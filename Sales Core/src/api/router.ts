@@ -4,19 +4,31 @@ import { v4 as uuid } from 'uuid';
 import {
   readEvents,
   readOffers,
-  readOpportunities,
-  readRounds,
-  readSellers,
-  readUsers,
   writeEvents,
   writeOffers,
-  writeOpportunities,
-  writeRounds,
-  writeSellers,
-  writeUsers,
 } from '../storage';
+import {
+  createOpportunity,
+  createRound,
+  createSeller,
+  createUser,
+  deactivateUser,
+  findUserByEmail,
+  getOpportunities,
+  getOpportunityById,
+  getRoundById,
+  getRounds,
+  getSellers,
+  getUsers,
+  loginUser,
+  updateOpportunity,
+  updateRound,
+  updateRoundUnit,
+  updateSeller,
+  updateUser,
+} from '../storage/asyncStorage';
 import { eventBus } from '../events';
-import { Offer, OfferEvent, OfferStatus, Opportunity, OpportunityStage, Round, RoundStatus, RoundUnit, Seller, HubUser, AppPermission, UserRole } from '../types';
+import { Offer, OfferEvent, Opportunity, OpportunityStage, Round, RoundUnit, Seller, HubUser, AppPermission, UserRole } from '../types';
 import { sseManager } from '../events/sse-manager';
 
 export const router = express.Router();
@@ -33,24 +45,20 @@ function withTrackingUrl(offer: Offer): Offer & { trackingUrl: string } {
   };
 }
 
-function findOpportunity(id: string): Opportunity | undefined {
-  return readOpportunities().find((item) => item.id === id);
-}
-
 function sanitizeOpportunityStage(stage: unknown): stage is OpportunityStage {
   return typeof stage === 'string' &&
     ['prospect', 'qualification', 'proposal', 'negotiation', 'closed-won', 'closed-lost'].includes(stage);
 }
 
-router.get('/health', (req: Request, res: Response) => {
-  const opportunities = readOpportunities();
+router.get('/health', async (req: Request, res: Response) => {
+  const opportunities = await getOpportunities();
   const offers = readOffers();
   res.json({ status: 'healthy', opportunities: opportunities.length, offers: offers.length });
 });
 
-router.get('/api/opportunities', (req: Request, res: Response) => {
+router.get('/api/opportunities', async (req: Request, res: Response) => {
   const stage = req.query.stage;
-  let opportunities = readOpportunities();
+  let opportunities = await getOpportunities();
 
   if (typeof stage === 'string') {
     opportunities = opportunities.filter((opportunity) => opportunity.stage === stage);
@@ -59,8 +67,8 @@ router.get('/api/opportunities', (req: Request, res: Response) => {
   res.json(opportunities);
 });
 
-router.get('/api/opportunities/:id', (req: Request, res: Response) => {
-  const opportunity = readOpportunities().find((item) => item.id === req.params.id);
+router.get('/api/opportunities/:id', async (req: Request, res: Response) => {
+  const opportunity = await getOpportunityById(req.params.id);
   if (!opportunity) {
     return res.status(404).json({ error: 'Opportunity not found' });
   }
@@ -68,7 +76,7 @@ router.get('/api/opportunities/:id', (req: Request, res: Response) => {
   res.json(opportunity);
 });
 
-router.post('/api/opportunities', (req: Request, res: Response) => {
+router.post('/api/opportunities', async (req: Request, res: Response) => {
   const body = req.body as Partial<Opportunity>;
   if (
     !body.name ||
@@ -84,49 +92,40 @@ router.post('/api/opportunities', (req: Request, res: Response) => {
   }
 
   const now = new Date().toISOString();
-  const newOpportunity: Opportunity = {
+  const newOpportunity = await createOpportunity({
     id: uuid(),
     name: body.name,
     accountName: body.accountName,
     contactName: body.contactName,
     contactEmail: body.contactEmail,
-    stage: body.stage,
+    stage: body.stage as OpportunityStage,
     closeDate: body.closeDate,
     estimatedAnnualValue: body.estimatedAnnualValue,
     units: body.units,
     notes: body.notes,
     createdAt: now,
     updatedAt: now,
-  };
-
-  const opportunities = readOpportunities();
-  writeOpportunities([...opportunities, newOpportunity]);
+  });
   res.status(201).json(newOpportunity);
 });
 
-router.patch('/api/opportunities/:id', (req: Request, res: Response) => {
-  const opportunities = readOpportunities();
-  const existing = opportunities.find((item) => item.id === req.params.id);
+router.patch('/api/opportunities/:id', async (req: Request, res: Response) => {
+  const existing = await getOpportunityById(req.params.id);
   if (!existing) {
     return res.status(404).json({ error: 'Opportunity not found' });
   }
 
   const body = req.body as Partial<Omit<Opportunity, 'id' | 'createdAt'>>;
-  const updatedOpportunity: Opportunity = {
-    ...existing,
+  const updatedOpportunity = await updateOpportunity(req.params.id, {
     ...body,
     stage: body.stage ?? existing.stage,
-    updatedAt: new Date().toISOString(),
-  };
-
-  writeOpportunities(opportunities.map((item) => (item.id === existing.id ? updatedOpportunity : item)));
+  });
   res.json(updatedOpportunity);
 });
 
 // War Room: send deal to war room / approve / reject
-router.patch('/api/opportunities/:id/warroom', (req: Request, res: Response) => {
-  const opportunities = readOpportunities();
-  const existing = opportunities.find((item) => item.id === req.params.id);
+router.patch('/api/opportunities/:id/warroom', async (req: Request, res: Response) => {
+  const existing = await getOpportunityById(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Opportunity not found' });
 
   const { status, note } = req.body as { status: 'pending' | 'approved' | 'rejected'; note?: string };
@@ -134,15 +133,11 @@ router.patch('/api/opportunities/:id/warroom', (req: Request, res: Response) => 
     return res.status(400).json({ error: 'Invalid status' });
   }
 
-  const updated: Opportunity = {
-    ...existing,
+  const updated = await updateOpportunity(req.params.id, {
     warRoomStatus: status,
     warRoomNote: note ?? existing.warRoomNote,
     warRoomAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
-
-  writeOpportunities(opportunities.map((o) => (o.id === existing.id ? updated : o)));
+  });
   res.json(updated);
 });
 
@@ -476,8 +471,8 @@ router.get('/notifications/stream', (req: Request, res: Response) => {
 
 // ─── SDU: Seller registry ────────────────────────────────────────────────────
 
-router.get('/api/sdu/sellers', (req: Request, res: Response) => {
-  let sellers = readSellers();
+router.get('/api/sdu/sellers', async (req: Request, res: Response) => {
+  let sellers = await getSellers();
   const { role, activeOnly } = req.query;
 
   if (activeOnly !== 'false') {
@@ -490,13 +485,13 @@ router.get('/api/sdu/sellers', (req: Request, res: Response) => {
   res.json(sellers);
 });
 
-router.post('/api/sdu/sellers', (req: Request, res: Response) => {
+router.post('/api/sdu/sellers', async (req: Request, res: Response) => {
   const body = req.body as Partial<Seller>;
   if (!body.name || !body.email || !body.role) {
     return res.status(400).json({ error: 'name, email og role er påkrevd' });
   }
 
-  const sellers = readSellers();
+  const sellers = await getSellers();
   if (sellers.find((s) => s.email === body.email)) {
     return res.status(409).json({ error: 'Selger med denne e-posten finnes allerede' });
   }
@@ -512,28 +507,26 @@ router.post('/api/sdu/sellers', (req: Request, res: Response) => {
     createdAt: new Date().toISOString(),
   };
 
-  writeSellers([...sellers, newSeller]);
+  await createSeller(newSeller);
   res.status(201).json(newSeller);
 });
 
-router.patch('/api/sdu/sellers/:id', (req: Request, res: Response) => {
-  const sellers = readSellers();
+router.patch('/api/sdu/sellers/:id', async (req: Request, res: Response) => {
+  const sellers = await getSellers();
   const existing = sellers.find((s) => s.id === req.params.id);
   if (!existing) {
     return res.status(404).json({ error: 'Selger ikke funnet' });
   }
 
   const body = req.body as Partial<Omit<Seller, 'id' | 'createdAt'>>;
-  const updated: Seller = { ...existing, ...body };
-
-  writeSellers(sellers.map((s) => (s.id === existing.id ? updated : s)));
+  const updated = await updateSeller(req.params.id, body);
   res.json(updated);
 });
 
 // ─── SDU: Visit rounds ───────────────────────────────────────────────────────
 
-router.get('/api/sdu/rounds', (req: Request, res: Response) => {
-  let rounds = readRounds();
+router.get('/api/sdu/rounds', async (req: Request, res: Response) => {
+  let rounds = await getRounds();
   const { sellerId, date, status } = req.query;
 
   if (typeof sellerId === 'string') {
@@ -549,7 +542,7 @@ router.get('/api/sdu/rounds', (req: Request, res: Response) => {
   res.json(rounds);
 });
 
-router.post('/api/sdu/rounds', (req: Request, res: Response) => {
+router.post('/api/sdu/rounds', async (req: Request, res: Response) => {
   const body = req.body as Partial<Round>;
   if (!body.name || !body.date || !body.seller?.id || !body.seller?.name || !body.createdBy) {
     return res.status(400).json({ error: 'name, date, seller (id+name) og createdBy er påkrevd' });
@@ -568,40 +561,31 @@ router.post('/api/sdu/rounds', (req: Request, res: Response) => {
     updatedAt: now,
   };
 
-  const rounds = readRounds();
-  writeRounds([...rounds, newRound]);
-  res.status(201).json(newRound);
+  const created = await createRound(newRound);
+  res.status(201).json(created);
 });
 
-router.get('/api/sdu/rounds/:id', (req: Request, res: Response) => {
-  const round = readRounds().find((r) => r.id === req.params.id);
+router.get('/api/sdu/rounds/:id', async (req: Request, res: Response) => {
+  const round = await getRoundById(req.params.id);
   if (!round) {
     return res.status(404).json({ error: 'Runde ikke funnet' });
   }
   res.json(round);
 });
 
-router.patch('/api/sdu/rounds/:id', (req: Request, res: Response) => {
-  const rounds = readRounds();
-  const existing = rounds.find((r) => r.id === req.params.id);
+router.patch('/api/sdu/rounds/:id', async (req: Request, res: Response) => {
+  const existing = await getRoundById(req.params.id);
   if (!existing) {
     return res.status(404).json({ error: 'Runde ikke funnet' });
   }
 
   const body = req.body as Partial<Pick<Round, 'name' | 'date' | 'seller' | 'status' | 'units'>>;
-  const updated: Round = {
-    ...existing,
-    ...body,
-    updatedAt: new Date().toISOString(),
-  };
-
-  writeRounds(rounds.map((r) => (r.id === existing.id ? updated : r)));
+  const updated = await updateRound(req.params.id, body);
   res.json(updated);
 });
 
-router.patch('/api/sdu/rounds/:id/units/:unitId', (req: Request, res: Response) => {
-  const rounds = readRounds();
-  const existing = rounds.find((r) => r.id === req.params.id);
+router.patch('/api/sdu/rounds/:id/units/:unitId', async (req: Request, res: Response) => {
+  const existing = await getRoundById(req.params.id);
   if (!existing) {
     return res.status(404).json({ error: 'Runde ikke funnet' });
   }
@@ -612,67 +596,46 @@ router.patch('/api/sdu/rounds/:id/units/:unitId', (req: Request, res: Response) 
   }
 
   const body = req.body as Partial<Pick<RoundUnit, 'visitStatus' | 'visitedAt' | 'note'>>;
-  const updatedUnit: RoundUnit = {
-    ...existing.units[unitIndex],
+  const updatedRound = await updateRoundUnit(req.params.id, req.params.unitId, {
     ...body,
     visitedAt: body.visitStatus && body.visitStatus !== 'pending'
       ? (body.visitedAt ?? new Date().toISOString())
       : existing.units[unitIndex].visitedAt,
-  };
-
-  const updatedUnits = [...existing.units];
-  updatedUnits[unitIndex] = updatedUnit;
-
-  const updatedRound: Round = {
-    ...existing,
-    units: updatedUnits,
-    updatedAt: new Date().toISOString(),
-  };
-
-  writeRounds(rounds.map((r) => (r.id === existing.id ? updatedRound : r)));
+  });
   res.json(updatedRound);
 });
 
 // ─── Auth: Brukerregister og innlogging ───────────────────────────────────────
 
 // POST /api/auth/login — valider navn + PIN, returner bruker (minus PIN) + oppdater lastLoginAt
-router.post('/api/auth/login', (req: Request, res: Response) => {
+router.post('/api/auth/login', async (req: Request, res: Response) => {
   const { name, pin } = req.body as { name?: string; pin?: string };
   if (!name || !pin) {
     return res.status(400).json({ error: 'name og pin er påkrevd' });
   }
 
-  const users = readUsers();
-  const user = users.find(
-    (u) => u.name.toLowerCase() === name.toLowerCase() && u.pin === pin && u.isActive
-  );
-
-  if (!user) {
+  const safeUser = await loginUser(name, pin);
+  if (!safeUser) {
     return res.status(401).json({ error: 'Feil navn eller PIN' });
   }
 
-  const updated: HubUser = { ...user, lastLoginAt: new Date().toISOString() };
-  writeUsers(users.map((u) => (u.id === user.id ? updated : u)));
-
-  const { pin: _pin, ...safeUser } = updated;
   res.json(safeUser);
 });
 
 // GET /api/auth/users — hent alle brukere (superadmin)
-router.get('/api/auth/users', (req: Request, res: Response) => {
-  const users = readUsers().map(({ pin: _pin, ...u }) => u);
-  res.json(users);
+router.get('/api/auth/users', async (req: Request, res: Response) => {
+  const users = await getUsers();
+  res.json(users.map(({ pin: _pin, ...u }) => u));
 });
 
 // POST /api/auth/users — opprett bruker
-router.post('/api/auth/users', (req: Request, res: Response) => {
+router.post('/api/auth/users', async (req: Request, res: Response) => {
   const body = req.body as Partial<HubUser>;
   if (!body.name || !body.email || !body.role || !body.pin) {
     return res.status(400).json({ error: 'name, email, role og pin er påkrevd' });
   }
 
-  const users = readUsers();
-  if (users.find((u) => u.email === body.email)) {
+  if (await findUserByEmail(body.email)) {
     return res.status(409).json({ error: 'Bruker med denne e-posten finnes allerede' });
   }
 
@@ -688,36 +651,31 @@ router.post('/api/auth/users', (req: Request, res: Response) => {
     createdBy: body.createdBy ?? 'superadmin',
   };
 
-  writeUsers([...users, newUser]);
-  const { pin: _pin, ...safeUser } = newUser;
+  const safeUser = await createUser(newUser);
   res.status(201).json(safeUser);
 });
 
 // PATCH /api/auth/users/:id — oppdater bruker (tilganger, rolle, PIN, aktiv)
-router.patch('/api/auth/users/:id', (req: Request, res: Response) => {
-  const users = readUsers();
+router.patch('/api/auth/users/:id', async (req: Request, res: Response) => {
+  const users = await getUsers();
   const existing = users.find((u) => u.id === req.params.id);
   if (!existing) {
     return res.status(404).json({ error: 'Bruker ikke funnet' });
   }
 
   const body = req.body as Partial<Omit<HubUser, 'id' | 'createdAt' | 'createdBy'>>;
-  const updated: HubUser = { ...existing, ...body };
-
-  writeUsers(users.map((u) => (u.id === existing.id ? updated : u)));
-  const { pin: _pin, ...safeUser } = updated;
+  const safeUser = await updateUser(req.params.id, body);
   res.json(safeUser);
 });
 
 // DELETE /api/auth/users/:id — deaktiver bruker
-router.delete('/api/auth/users/:id', (req: Request, res: Response) => {
-  const users = readUsers();
+router.delete('/api/auth/users/:id', async (req: Request, res: Response) => {
+  const users = await getUsers();
   const existing = users.find((u) => u.id === req.params.id);
   if (!existing) {
     return res.status(404).json({ error: 'Bruker ikke funnet' });
   }
 
-  const deactivated: HubUser = { ...existing, isActive: false };
-  writeUsers(users.map((u) => (u.id === existing.id ? deactivated : u)));
+  await deactivateUser(req.params.id);
   res.json({ success: true });
 });

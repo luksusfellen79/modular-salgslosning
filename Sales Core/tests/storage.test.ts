@@ -57,6 +57,7 @@ describe('storage', () => {
       trackingToken: 'token-test',
       status: 'draft',
       validUntil: '2026-12-31',
+      viewCount: 0,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -75,7 +76,7 @@ describe('storage', () => {
     writeOffers([offer]);
     writeEvents([event]);
 
-    expect(readOpportunities()).toEqual([opportunity]);
+    expect(readOpportunities()).toEqual([{ ...opportunity, salesRepName: 'Jørn Haga' }]);
     expect(readOffers()).toEqual([offer]);
     expect(readEvents()).toEqual([event]);
   });

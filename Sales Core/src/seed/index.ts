@@ -1,4 +1,6 @@
 // ── Seed data initialization ──
+import { usePostgres } from '../db/pool';
+import { ensurePostgresSeed } from '../db/seed';
 import { readOpportunities, writeOpportunities } from '../storage';
 import { Opportunity } from '../types';
 
@@ -77,7 +79,11 @@ const SEED_OPPORTUNITIES: Opportunity[] = [
   },
 ];
 
-export function ensureSeedData(): void {
+export async function ensureSeedData(): Promise<void> {
+  if (usePostgres()) {
+    await ensurePostgresSeed();
+    return;
+  }
   const opportunities = readOpportunities();
   if (!opportunities.length) {
     writeOpportunities(SEED_OPPORTUNITIES);
