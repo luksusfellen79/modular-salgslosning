@@ -1,0 +1,257 @@
+# Cursor Rules — Modulær Salgsløsning (Telenor)
+
+Du er en senior full-stack utvikler som jobber på en modulær salgsplattform som erstatter Salesforce hos Telenor.
+Prototypen kjører på Railway. Produksjonmål er Telenors Nova-plattform (Kubernetes).
+
+---
+
+## Systemformål
+
+Selgerne brukte ikke Salesforce fordi UX var for dårlig. Målet er skreddersydde micro-apps per rolle og salgskanal,
+koblet sammen via en felles backend-arkitektur. Salesforce fases ut fullstendig.
+
+---
+
+## Arkitektur (lær denne utenat)
+
+```
+[Fiber-sys] [Mobil-sys] [TV-sys] [Pris-sys] [Kafka]
+                      ↓
+            [ Integration Layer ]        ← MASTER datahub
+            - Adapter per kilde-system
+            - InMemoryCache (TTL)
+            - InMemoryEventBus + KafkaStub
+            - Unified domain model med SourceMeta
+                      ↓
+              [ Gateway Layer ]           ← Auth, routing, tilgangskontroll
+                      ↓
+   [MDU CRM] [SDU CRM] [Planner] [Hub] [fremtidige moduler]
+
+[ Sales Core ]   ← salgsoperasjoner (pipeline, tilbud, selgerregister)
+[ KAS Core mock] ← beholdes bakoverkompatibel, migreres gradvis til Integration Layer
+```
+
+**Kritisk:** Integration Layer er ny master for alle data. KAS Core mock beholdes kun for
+bakoverkompatibilitet. Nye moduler skal alltid hente fra Integration Layer, aldri direkte fra KAS Core.
+
+---
+
+## Deployede tjenester (Railway)
+
+| Tjeneste             | URL                                               | Mappe                          |
+|----------------------|---------------------------------------------------|--------------------------------|
+| Integration Layer    | integration-layer-production.up.railway.app       | integration-layer/             |
+| KAS Core mock        | kas-core-production.up.railway.app                | KAS Core mock/                 |
+| Sales Core           | sales-core-production.up.railway.app              | Sales Core/                    |
+| Hub (innlogging)     | salgshub-production.up.railway.app                | Hub/hub-app/                   |
+| MDU CRM (selger)     | mdu-crm-production.up.railway.app                 | MDU CRM/dealflow-crm-main/     |
+| MDU Leder            | mdu-leder-production.up.railway.app               | MDU Leder/leder-app/           |
+| SDU CRM (feltsalg)   | sdu-crm-production.up.railway.app                 | SDU CRM/feltsalg-app/          |
+| SDU Incentive Manager| sdu-incentives-production.up.railway.app          | SDU bonuser/incentive-manager/ |
+| SDU Planner          | sdu-planner-production.up.railway.app             | SDU Planner/planner-app/       |
+
+Railway project ID: e779d578-b2fb-4875-89d6-e88049d9ecca
+Production environment ID: 16574ee3-d441-4328-85e2-2685dc9027ac
+
+---
+
+## Tech Stack
+
+**Frontend (alle apps):**
+- Vite + React + TypeScript + Tailwind CSS
+- `"type": "module"` i package.json (PostCSS ES module compatibility)
+- Session via `?hub_session=` URL-param (ikke cookies)
+
+**Backend (alle tjenester):**
+- Node.js + TypeScript + Express
+- Integration Layer: **CommonJS** (ikke ESM) — jest + ts-jest krever det
+- Andre tjenester: sjekk eksisterende `package.json` før du antar ESM/CJS
+- **Alltid `.js`-extension i imports** (selv for .ts-filer) — kreves av Node ESM-resolver
+
+**Deploy:**
+- Railway med Nixpacks — bygger automatisk fra GitHub-repo `luksusfellen79/modular-salgslosning`
+- Én mappe per tjeneste = én Railway service
+
+---
+
+## Integration Layer — adapters og endepunkter
+
+Alle data hentes via Integration Layer. Nye moduler kaller alltid Integration Layer — aldri KAS Core direkte.
+
+```
+# Produkter
+GET  /products                              — alle produkter (fiber + mobil + tv)
+GET  /products/:id                          — ett produkt
+
+# Kunder og beboere (eksisterende endepunkter)
+GET  /residents/:buildingId                 — beboere i bygg
+GET  /residents/:buildingId/summary         — beboeroversikt
+GET  /units/:unitId/resident                — beboer i enhet
+GET  /customers/:id                         — kundeprofil
+
+# Prising og kampanjer
+GET  /pricing/campaigns                     — alle aktive kampanjer
+GET  /pricing/campaigns/:segment            — kampanjer for segment
+POST /pricing/calculate                     — beregn pris med kampanje
+
+# CustomerAdapter (ny — SDU + MDU kundeintelligens)
+GET  /adapters/customer/buildings/:id/residents         — beboere i bygg (SDU)
+GET  /adapters/customer/buildings/:id/residents/summary — beboeroversikt
+GET  /adapters/customer/units/:unitId/resident          — beboer i enhet
+GET  /adapters/customer/residents/search?q=             — søk etter beboer
+GET  /adapters/customer/customers/:id                   — kundeprofil (MDU)
+GET  /adapters/customer/buildings/:id/customers         — kunder per bygg (MDU)
+GET  /adapters/customer/persons/:id/sales-context       — churn, win-back, potensial
+GET  /adapters/customer/win-back                        — win-back-kandidater
+
+# EventBus
+POST /events/publish                        — publiser hendelse { topic, payload, source }
+GET  /events/topics                         — alle gyldige topic-navn
+GET  /events/log?topic=sale.created         — siste hendelser (kun dev)
+```
+
+---
+
+## EventBus — topics og mønster
+
+Alle tjenester publiserer hendelser via HTTP POST til Integration Layer `/events/publish`.
+I prod (Nova/Kafka): publiser direkte via KafkaEventBus i stedet.
+
+```typescript
+// Publiser fra en tjeneste
+await fetch(`${INTEGRATION_LAYER_URL}/events/publish`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+  body: JSON.stringify({ topic: 'sale.created', payload: { dealId, ... }, source: 'mdu-crm' })
+});
+```
+
+Gyldige topics (importer fra `integration-layer/src/events/EventTopics.ts`):
+- `sale.created` / `sale.status_changed` / `sale.won` / `sale.lost`
+- `sale.sent_to_war_room` / `sale.war_room_approved` / `sale.war_room_rejected`
+- `customer.created` / `customer.updated`
+- `visit.completed` / `round.created` / `round.completed`
+- `incentive.triggered` / `bonus.calculated`
+- `campaign.updated` / `product.updated`
+
+---
+
+## JWT-auth
+
+Hub utsteder JWT ved innlogging. Alle tjenester validerer med `requireAuth`-middleware.
+Importer fra `integration-layer/src/middleware/jwt.middleware.ts`.
+
+```typescript
+import { requireAuth, requireRole } from '../middleware/jwt.middleware.js';
+app.use('/api', requireAuth);
+app.use('/api/leder', requireAuth, requireRole('mdu-leder', 'sdu-leder', 'superadmin'));
+```
+
+Token-payload (Azure AD-kompatibel):
+- `sub` — bruker UUID
+- `name` — fullt navn
+- `email` — epost
+- `roles` — ['superadmin'] | ['mdu-selger'] | ['sdu-leder'] | osv.
+
+Env-var: `JWT_SECRET` — **bytt alltid ut dev-secret i prod**.
+
+---
+
+## Auth-modell
+
+**Nå (prototype):** Navnebasert — selger velger seg selv ved innlogging.
+
+Testbrukere i Hub:
+- Jørn Haga — superadmin, pin: 0000
+- Nina Lund — MDU salgsleder, pin: 1234
+- Per Andersen — SDU salgsleder, pin: 1234
+- Lise Berg — selger MDU, pin: 1234
+- Kristian Mo — selger SDU, pin: 1234
+
+**Roadmap:**
+1. Nå: navnebasert
+2. Neste: JWT
+3. Produksjon: Azure AD (Telenor Nova / Telenor SSO via OAuth PKCE)
+
+Session distribueres via `?hub_session=` URL-parameter fra Hub til alle micro-apps.
+
+---
+
+## Salgsflyter
+
+### SDU-flyt (feltsalg, dør-til-dør)
+1. Salgsleder oppretter runder i **SDU Planner** (velger bygg fra Integration Layer)
+2. Selger åpner **SDU CRM** → velger seg selv → ser runden → besøker enheter
+3. Besøksutfall logges (kundeoppretting + visitStatus per enhet)
+4. Incentiver styres i **SDU Incentive Manager**
+
+### MDU-flyt (boligselskap/eiendom)
+MDU CRM → pipeline/kanban → tilbud via Sales Core → kundeportal
+
+### War Room-flyt
+Selger → "Send til War Room" → deal fryses → MDU Leder godkjenner/avviser
+
+---
+
+## Kodekonvensjoner
+
+- **TypeScript strict mode** — ingen `any` uten god grunn
+- **Async/await** overalt — ingen callbacks
+- **Alltid `.js`-extension** i imports (Node ESM-krav, selv for .ts-filer)
+- **Feilhåndtering:** Bruk etablerte feilformater, ikke kast rå errors til klient
+- **HTTP-statuskoder:** 400/401/403/404/429/502/503/504 — bruk korrekt kode
+- **Ingen hardkodede secrets** — alltid fra env-vars
+- **Logging:** Bruk logger med `correlationId`, aldri `console.log` i produksjonskode
+- **Tester i Integration Layer:** Integrasjonstester, ikke mocks for forretningslogikk
+
+---
+
+## Viktige mønstre å følge
+
+### Ny adapter i Integration Layer
+→ Implementer `IBaseAdapter` (og aktuelt sub-interface fra `IAdapter.ts`)
+→ Legg til i `AdapterRegistry`
+→ Eksisterende konsumenter skal ikke trenge å endres
+
+### Ny modul som trenger kundedata (SDU/MDU)
+→ Kall `/adapters/customer/...` — aldri gjenstandene i KAS Core direkte
+
+### Ny modul som trenger produktdata
+→ Kall `/products` eller `/products/:id`
+
+### Publiser hendelse fra en tjeneste
+→ POST til `/events/publish` med topic fra `EventTopics.ts`
+
+### Kafka-integrasjon
+→ `KAFKA_ENABLED=true` + KafkaJS er klart
+→ I dev/prototype: KafkaStub brukes (in-memory event bus)
+
+---
+
+## Database (PostgreSQL på Railway)
+
+Fire schemas — én per tjenestedomene:
+- `hub` — brukere, roller, sessions (`database/schema/hub.sql`)
+- `sales_core` — MDU deals + events + tilbud, SDU runder + besøk (`database/schema/sales_core.sql`)
+- `sdu` — bonusregler, bonuser, månedlig oppsummering (`database/schema/sdu.sql`)
+- `mdu` — MDU kunder, kontrakter, enhetsaktiveringer (`database/schema/mdu.sql`)
+
+Conn-string fra `DATABASE_URL` env-var. Bruk alltid parameteriserte queries — aldri string-concatenation.
+
+---
+
+## Planlagte moduler (ikke bygget ennå)
+
+- KafkaEventBus — bytt InMemoryEventBus mot KafkaJS når KAFKA_ENABLED=true på Nova
+- Contract generation (Signicat + BankID)
+- Route planning
+- Campaign planner
+- User access (Telenor SSO / Azure AD — JWT er allerede Azure AD-kompatibelt)
+- CPQ — kaller Integration Layer for produktkatalog + priser, Sales Core for quotes
+
+---
+
+## Produksjonmål
+
+Telenors Nova-plattform (Kubernetes). Se `k8s/`-mappe i Gateway Layer for manifest-eksempler.
+Deploy-workflow: kode → git push → CI-bygg → deploy på Nova.
