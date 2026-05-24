@@ -160,8 +160,9 @@ export async function logNBAOutcome(payload: NBAOutcomePayload): Promise<void> {
   }).catch(() => { /* silent — learning signal, not critical */ });
 }
 
-// ── EventBus — publiser besøksutfall ──────────────────────────────────────────
+// ── EventBus — legacy helper (bruk Sales Core PATCH for visit.completed) ───────
 
+/** @deprecated Sales Core publiserer visit.completed ved PATCH /api/sdu/rounds/.../units/... */
 export async function publishVisitCompleted(payload: {
   unitId: string;
   buildingId: string;
@@ -177,7 +178,7 @@ export async function publishVisitCompleted(payload: {
     body: JSON.stringify({
       topic: 'visit.completed',
       payload,
-      source: 'mock',
+      source: 'sdu-crm',
     }),
   }).catch(() => { /* fire-and-forget */ });
 }

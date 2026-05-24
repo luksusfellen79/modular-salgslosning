@@ -24,6 +24,8 @@ import { createCustomerAdapterRouter } from './adapters/customer/CustomerRouter.
 import { createSduProductsRouter } from './api/sdu-products.js';
 import { createMduProductsRouter } from './api/mdu-products.js';
 import { createEventBusRouter } from './events/EventBusRouter.js';
+import { registerIncentiveHandlers } from './events/handlers/incentive-handler.js';
+import { createBonusesRouter } from './api/bonuses.js';
 import { correlationIdMiddleware } from './middleware/jwt.middleware.js';
 import { HealthResponse } from './types/domain.js';
 
@@ -70,10 +72,8 @@ const kafkaStub = new KafkaStub(
   eventBus,
 );
 
-// Eksempel på event-handler — Incentive Manager lytter på visit.completed
-eventBus.subscribe('visit.completed', async (event) => {
-  logger.info('Visit completed — trigger incentive calculation', { payload: event.payload });
-});
+// SDU-insentiver: visit.completed → bonus.calculated
+registerIncentiveHandlers(eventBus);
 
 eventBus.subscribe('telenor.pricing.campaign.activated', async (event) => {
   logger.info('Campaign activated via event', { campaignId: event.payload.campaignId });
@@ -122,13 +122,18 @@ app.use('/pricing', createPricingRouter(registry));
 // CustomerAdapter — ny master for SDU/MDU kundeintelligens
 app.use('/adapters/customer', createCustomerAdapterRouter());
 
-// EventBus — HTTP-grensesnitt
+// EventBus — HTTP-grensesnitt + SSE
 app.use('/events', createEventBusRouter(eventBus));
+
+// Beregnede bonuser (Incentive Manager)
+app.use('/bonuses', createBonusesRouter());
 
 // ─── Start ────────────────────────────────────────────────────────────────────────────
 
 async function start(): Promise<void> {
   await kafkaStub.connect();
+
+  if (process.env.NODE_ENV === 'test') return;
 
   app.listen(PORT, () => {
     logger.info('Integration Layer started', {
@@ -145,9 +150,11 @@ async function start(): Promise<void> {
   });
 }
 
-start().catch(err => {
-  logger.error('Failed to start Integration Layer', { error: err });
-  process.exit(1);
-});
+if (process.env.NODE_ENV !== 'test') {
+  start().catch(err => {
+    logger.error('Failed to start Integration Layer', { error: err });
+    process.exit(1);
+  });
+}
 
 export { app, registry, eventBus };

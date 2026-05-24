@@ -36,6 +36,7 @@
     "preset": "ts-jest",
     "testEnvironment": "node",
     "testMatch": ["**/tests/**/*.test.ts"],
+    "setupFiles": ["<rootDir>/tests/jest.setup.ts"],
     "moduleNameMapper": {
       "^@/(.*)$": "<rootDir>/src/$1",
       "^(\\.{1,2}/.*)\\.js$": "$1"

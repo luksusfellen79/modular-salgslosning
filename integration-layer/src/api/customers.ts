@@ -113,24 +113,39 @@ export function createCustomersRouter(
       deps?.cache?.delete(`resident:${unitId}`);
 
       if (deps?.eventBus) {
+        const occurredAt = new Date().toISOString();
+        const basePayload = {
+          customerId: result.customer.customerId,
+          unitId,
+          buildingId: result.customer.buildingId,
+          soldProducts,
+          campaignId,
+          campaignName,
+          salesRepName,
+          channel: 'sdu',
+        };
+
         await deps.eventBus.publish({
           eventId: randomUUID(),
           eventType: Topics.CUSTOMER_CREATED,
           source: 'fiber-system',
-          occurredAt: new Date().toISOString(),
-          payload: {
-            customerId: result.customer.customerId,
-            unitId,
-            buildingId: result.customer.buildingId,
-            soldProducts,
-            campaignId,
-            campaignName,
-            salesRepName,
-            created: result.created,
-          },
+          occurredAt,
+          payload: { ...basePayload, created: result.created },
         }).catch(err => {
           logger.error('Failed to publish customer.created', { error: err });
         });
+
+        if (result.created) {
+          await deps.eventBus.publish({
+            eventId: randomUUID(),
+            eventType: Topics.SALE_CREATED,
+            source: 'sdu-crm',
+            occurredAt,
+            payload: basePayload,
+          }).catch(err => {
+            logger.error('Failed to publish sale.created', { error: err });
+          });
+        }
       }
 
       res.status(result.created ? 201 : 200).json({

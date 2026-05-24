@@ -30,6 +30,8 @@ import {
 import { eventBus } from '../events';
 import { Offer, OfferEvent, Opportunity, OpportunityStage, Round, RoundUnit, Seller, HubUser, AppPermission, UserRole } from '../types';
 import { sseManager } from '../events/sse-manager';
+import { emitIntegrationEvent } from '../events/integrationLayerPublisher';
+import { EventTopics } from '../events/topics';
 
 export const router = express.Router();
 router.use(express.json());
@@ -106,6 +108,17 @@ router.post('/api/opportunities', async (req: Request, res: Response) => {
     createdAt: now,
     updatedAt: now,
   });
+
+  emitIntegrationEvent(EventTopics.SALE_CREATED, {
+    dealId: newOpportunity.id,
+    accountName: newOpportunity.accountName,
+    contactName: newOpportunity.contactName,
+    stage: newOpportunity.stage,
+    channel: 'mdu',
+    estimatedAnnualValue: newOpportunity.estimatedAnnualValue,
+    units: newOpportunity.units,
+  });
+
   res.status(201).json(newOpportunity);
 });
 
@@ -120,6 +133,30 @@ router.patch('/api/opportunities/:id', async (req: Request, res: Response) => {
     ...body,
     stage: body.stage ?? existing.stage,
   });
+
+  if (updatedOpportunity && body.stage && body.stage !== existing.stage) {
+    emitIntegrationEvent(EventTopics.SALE_STATUS_CHANGED, {
+      dealId: updatedOpportunity.id,
+      fromStage: existing.stage,
+      toStage: updatedOpportunity.stage,
+      channel: 'mdu',
+    });
+    if (updatedOpportunity.stage === 'closed-won') {
+      emitIntegrationEvent(EventTopics.SALE_WON, {
+        dealId: updatedOpportunity.id,
+        accountName: updatedOpportunity.accountName,
+        channel: 'mdu',
+      });
+    }
+    if (updatedOpportunity.stage === 'closed-lost') {
+      emitIntegrationEvent(EventTopics.SALE_LOST, {
+        dealId: updatedOpportunity.id,
+        accountName: updatedOpportunity.accountName,
+        channel: 'mdu',
+      });
+    }
+  }
+
   res.json(updatedOpportunity);
 });
 
@@ -138,6 +175,21 @@ router.patch('/api/opportunities/:id/warroom', async (req: Request, res: Respons
     warRoomNote: note ?? existing.warRoomNote,
     warRoomAt: new Date().toISOString(),
   });
+
+  const warRoomTopic = status === 'pending'
+    ? EventTopics.SALE_SENT_TO_WAR_ROOM
+    : status === 'approved'
+      ? EventTopics.WAR_ROOM_APPROVED
+      : EventTopics.WAR_ROOM_REJECTED;
+
+  emitIntegrationEvent(warRoomTopic, {
+    dealId: existing.id,
+    accountName: existing.accountName,
+    status,
+    note: note ?? existing.warRoomNote,
+    channel: 'mdu',
+  });
+
   res.json(updated);
 });
 
@@ -364,6 +416,17 @@ router.post('/track/:trackingToken/respond', (req: Request, res: Response) => {
   writeEvents([...events, event]);
   eventBus.publish('offer.event', event);
 
+  if (action === 'accepted') {
+    emitIntegrationEvent(EventTopics.SALE_WON, {
+      dealId: updatedOffer.opportunityId,
+      offerId: updatedOffer.id,
+      accountName: updatedOffer.accountName,
+      channel: 'mdu',
+      monthlyPricePerUnit: updatedOffer.monthlyPricePerUnit,
+      units: updatedOffer.units,
+    });
+  }
+
   res.json({ success: true, status: updatedOffer.status });
 });
 
@@ -562,6 +625,17 @@ router.post('/api/sdu/rounds', async (req: Request, res: Response) => {
   };
 
   const created = await createRound(newRound);
+
+  emitIntegrationEvent(EventTopics.ROUND_CREATED, {
+    roundId: created.id,
+    name: created.name,
+    date: created.date,
+    sellerId: created.seller.id,
+    sellerName: created.seller.name,
+    unitCount: created.units.length,
+    createdBy: created.createdBy,
+  });
+
   res.status(201).json(created);
 });
 
@@ -581,6 +655,18 @@ router.patch('/api/sdu/rounds/:id', async (req: Request, res: Response) => {
 
   const body = req.body as Partial<Pick<Round, 'name' | 'date' | 'seller' | 'status' | 'units'>>;
   const updated = await updateRound(req.params.id, body);
+
+  if (updated && body.status === 'completed' && existing.status !== 'completed') {
+    emitIntegrationEvent(EventTopics.ROUND_COMPLETED, {
+      roundId: updated.id,
+      name: updated.name,
+      date: updated.date,
+      sellerId: updated.seller.id,
+      sellerName: updated.seller.name,
+      unitCount: updated.units.length,
+    });
+  }
+
   res.json(updated);
 });
 
@@ -595,13 +681,39 @@ router.patch('/api/sdu/rounds/:id/units/:unitId', async (req: Request, res: Resp
     return res.status(404).json({ error: 'Enhet ikke funnet i runden' });
   }
 
-  const body = req.body as Partial<Pick<RoundUnit, 'visitStatus' | 'visitedAt' | 'note'>>;
+  const body = req.body as Partial<Pick<RoundUnit, 'visitStatus' | 'visitedAt' | 'note'>> & {
+    outcome?: string;
+    campaignId?: string;
+    soldProducts?: string[];
+    salesRepName?: string;
+    buildingId?: string;
+    sellerId?: string;
+  };
+
   const updatedRound = await updateRoundUnit(req.params.id, req.params.unitId, {
     ...body,
     visitedAt: body.visitStatus && body.visitStatus !== 'pending'
       ? (body.visitedAt ?? new Date().toISOString())
       : existing.units[unitIndex].visitedAt,
   });
+
+  if (updatedRound) {
+    const unit = updatedRound.units.find((u) => u.unitId === req.params.unitId);
+    emitIntegrationEvent(EventTopics.VISIT_COMPLETED, {
+      roundId: updatedRound.id,
+      unitId: req.params.unitId,
+      buildingId: body.buildingId ?? unit?.buildingId,
+      visitStatus: unit?.visitStatus,
+      outcome: body.outcome,
+      salesRepName: body.salesRepName ?? updatedRound.seller.name,
+      sellerId: body.sellerId ?? updatedRound.seller.id,
+      campaignId: body.campaignId,
+      soldProducts: body.soldProducts ?? [],
+      note: unit?.note,
+      visitedAt: unit?.visitedAt,
+    });
+  }
+
   res.json(updatedRound);
 });
 

@@ -63,12 +63,29 @@ export async function updateUnitVisit(
   roundId: string,
   unitId: string,
   visitStatus: UnitVisitStatus,
-  note?: string
+  options?: {
+    note?: string;
+    outcome?: string;
+    campaignId?: string;
+    soldProducts?: string[];
+    salesRepName?: string;
+    buildingId?: string;
+    sellerId?: string;
+  },
 ): Promise<Round> {
   const res = await fetch(`${BASE}/api/sdu/rounds/${roundId}/units/${unitId}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ visitStatus, note }),
+    body: JSON.stringify({
+      visitStatus,
+      note: options?.note,
+      outcome: options?.outcome,
+      campaignId: options?.campaignId,
+      soldProducts: options?.soldProducts,
+      salesRepName: options?.salesRepName,
+      buildingId: options?.buildingId,
+      sellerId: options?.sellerId,
+    }),
   });
   if (!res.ok) throw new Error(`Sales Core PATCH unit: ${res.status}`);
   return res.json() as Promise<Round>;

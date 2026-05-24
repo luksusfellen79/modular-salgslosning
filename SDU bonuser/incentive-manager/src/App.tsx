@@ -3,10 +3,12 @@ import {
   fetchSDUProducts,
   addProductIncentive,
   removeProductIncentive,
+  fetchRecentBonuses,
   SDUProduct,
   Incentive,
   IncentiveType,
   ProductCategory,
+  CalculatedBonus,
   CATEGORY_LABELS,
   CATEGORY_ICONS,
 } from './lib/integrationLayer';
@@ -939,6 +941,7 @@ export default function App() {
   const [toast, setToast]           = useState('');
   const [proposingFor, setProposingFor]         = useState<ProposeTarget | null>(null);
   const [proposingBonus, setProposingBonus]     = useState<ProposeBonusTarget | null>(null);
+  const [liveBonuses, setLiveBonuses]           = useState<CalculatedBonus[]>([]);
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 2800); };
 
@@ -949,6 +952,19 @@ export default function App() {
       .catch(() => setCatalogOk(false))
       .finally(() => setLoadingProducts(false));
   }, []);
+
+  // Live bonuser fra EventBus-kjeden (visit.completed → bonus.calculated)
+  useEffect(() => {
+    if (userRole !== 'telenor' || page !== 'incentives') return;
+    const load = () => {
+      fetchRecentBonuses(10)
+        .then(setLiveBonuses)
+        .catch(() => setLiveBonuses([]));
+    };
+    load();
+    const timer = setInterval(load, 30000);
+    return () => clearInterval(timer);
+  }, [userRole, page]);
 
   const totalPending = proposals.filter(p => p.status === 'pending').length;
 
@@ -1145,6 +1161,19 @@ export default function App() {
       )}
 
       {/* Telenor role views */}
+      {userRole === 'telenor' && page === 'incentives' && liveBonuses.length > 0 && (
+        <div style={{ margin: '12px 24px 0', padding: '12px 16px', background: T.greenLight, borderRadius: 10, border: `1px solid ${T.green}` }}>
+          <div style={{ fontWeight: 700, fontSize: 13, color: T.gray800, marginBottom: 8 }}>
+            Live bonuser (EventBus: visit.completed → bonus.calculated)
+          </div>
+          {liveBonuses.slice(0, 5).map((b) => (
+            <div key={b.id} style={{ fontSize: 12, color: T.gray600, marginBottom: 4 }}>
+              {b.sellerName ?? 'Selger'} · {b.totalBonusKr.toLocaleString('nb-NO')} kr · {b.lineItems.map((l) => l.incentiveName).join(', ')}
+            </div>
+          ))}
+        </div>
+      )}
+
       {userRole === 'telenor' && page === 'incentives' && (
         <IncentiveView
           agencies={agencies}

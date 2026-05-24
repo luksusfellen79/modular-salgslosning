@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { Resident, Campaign, UpsellProduct, VisitStatus, VisitOutcome } from './lib/types';
-import { fetchResident, logSDUOutcome, fetchNBA, logNBAOutcome, publishVisitCompleted, NBARecommendation } from './lib/integrationLayer';
+import { fetchResident, logSDUOutcome, fetchNBA, logNBAOutcome, NBARecommendation } from './lib/integrationLayer';
 import { fetchSellers, fetchRoundsForSeller, updateUnitVisit, Round, RoundUnit, Seller, UnitVisitStatus } from './lib/salesCore';
 
 // ── Telenor logo ──────────────────────────────────────────────────────────────
@@ -760,26 +760,23 @@ function ResidentDetail({
           notes: `Runde: ${round.name}, enhet ${unit.address}`,
         });
 
-        // 2. Persist visit status to Sales Core round
+        // 2. Persist visit status to Sales Core (publiserer visit.completed via EventBus)
         await updateUnitVisit(
           round.id,
           unit.unitId,
           toUnitVisitStatus(outcome),
-          outcome === 'followup' ? 'Oppfølging avtalt' : outcome === 'marketing' ? 'Marketing-kampanje' : undefined
+          {
+            note: outcome === 'followup' ? 'Oppfølging avtalt' : outcome === 'marketing' ? 'Marketing-kampanje' : undefined,
+            outcome,
+            campaignId: campaign.id,
+            soldProducts,
+            salesRepName: seller.name,
+            buildingId: unit.buildingId,
+            sellerId: seller.id,
+          },
         );
 
-        // 3. Publiser visit.completed til Integration Layer EventBus
-        publishVisitCompleted({
-          unitId: resident.unitId,
-          buildingId: unit.buildingId,
-          outcome,
-          salesRepName: seller.name,
-          roundId: round.id,
-          campaignId: campaign.id,
-          soldProducts,
-        });
-
-        // 4. Log NBA outcome (fire-and-forget learning signal)
+        // 3. Log NBA outcome (fire-and-forget learning signal)
         if (nbaRec) {
           logNBAOutcome({
             unitId: resident.unitId,

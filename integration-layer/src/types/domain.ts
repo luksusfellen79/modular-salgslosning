@@ -10,7 +10,12 @@ export type DataSource =
   | 'pricing-system'
   | 'customer-system'
   | 'kafka'
-  | 'mock';
+  | 'mock'
+  | 'sdu-crm'
+  | 'sales-core'
+  | 'mdu-crm'
+  | 'workflow-module'
+  | 'incentive-manager';
 
 export type ProductCategory = 'fiber' | 'mobile' | 'tv' | 'security' | 'bundle';
 

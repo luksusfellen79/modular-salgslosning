@@ -8,6 +8,7 @@ import { GatewayClient } from './gateway/gateway-client';
 import { WorkflowEngine } from './workflows/workflow-engine';
 import { createRouter } from './api/router';
 import { setupCronJobs } from './scheduler/cron';
+import { connectIntegrationLayerEvents, registerPlatformWorkflowHandlers } from './workflows/platform-event-handler';
 import logger from './logger';
 
 function createEventBus(): EventBus {
@@ -23,6 +24,16 @@ async function main(): Promise<void> {
     process.env.GATEWAY_API_KEY ?? ''
   );
   const engine = new WorkflowEngine(eventBus, gatewayClient);
+
+  registerPlatformWorkflowHandlers(eventBus);
+
+  const integrationLayerUrl = process.env.INTEGRATION_LAYER_URL;
+  if (integrationLayerUrl) {
+    connectIntegrationLayerEvents(eventBus, integrationLayerUrl);
+    logger.info('integration_layer_events_enabled', { integrationLayerUrl });
+  } else {
+    logger.warn('integration_layer_events_disabled', { reason: 'INTEGRATION_LAYER_URL not set' });
+  }
 
   setupCronJobs(async () => { await engine.runMonthlyCommission(); });
 

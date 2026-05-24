@@ -78,3 +78,27 @@ export async function removeProductIncentive(
   if (!res.ok) throw new Error(`Integration Layer DELETE incentive: ${res.status}`);
   return res.json() as Promise<SDUProduct>;
 }
+
+export interface CalculatedBonus {
+  id: string;
+  occurredAt: string;
+  sellerName?: string;
+  unitId: string;
+  buildingId: string;
+  roundId?: string;
+  totalBonusKr: number;
+  periodMonth: string;
+  lineItems: Array<{
+    productId: string;
+    productName: string;
+    incentiveName: string;
+    bonusKr: number;
+  }>;
+}
+
+export async function fetchRecentBonuses(limit = 20): Promise<CalculatedBonus[]> {
+  const res = await fetch(`${BASE}/bonuses?limit=${limit}`);
+  if (!res.ok) throw new Error(`Integration Layer bonuses: ${res.status}`);
+  const data = await res.json() as { bonuses: CalculatedBonus[] };
+  return data.bonuses;
+}
