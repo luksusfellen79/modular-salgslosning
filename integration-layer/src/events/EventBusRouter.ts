@@ -4,6 +4,7 @@
 // GET  /events/log         — siste hendelser (kun dev)
 
 import { Router, Request, Response } from 'express';
+import { randomUUID } from 'crypto';
 import { InMemoryEventBus } from './InMemoryEventBus.js';
 import { ALL_TOPICS } from './EventTopics.js';
 import { IntegrationEvent, DataSource } from '../types/domain.js';
@@ -36,7 +37,7 @@ export function createEventBusRouter(eventBus: InMemoryEventBus): Router {
     }
 
     const event: IntegrationEvent = {
-      eventId: crypto.randomUUID(),
+      eventId: randomUUID(),
       eventType: topic,
       source: source as DataSource,
       occurredAt: new Date().toISOString(),

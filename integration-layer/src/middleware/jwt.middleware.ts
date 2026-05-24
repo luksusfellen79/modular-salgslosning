@@ -3,11 +3,9 @@
 //
 // Nå:       JWT signert med symmetrisk secret (HS256)
 // Produksjon: Azure AD (asymmetrisk RS256, JWKS-endpoint)
-//
-// For å bytte til Azure AD: endre verifyToken() til å bruke
-// jwksRsa.expressJwtSecret() mot Telenors Azure AD-tenant.
 
 import jwt from 'jsonwebtoken';
+import { randomUUID } from 'crypto';
 import { Request, Response, NextFunction } from 'express';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-BYTT-MEG-I-PROD';
@@ -109,16 +107,6 @@ export function requireRole(...roller: string[]) {
 export function correlationIdMiddleware(req: Request, _res: Response, next: NextFunction): void {
   req.correlationId =
     (req.headers['x-correlation-id'] as string) ||
-    crypto.randomUUID();
+    randomUUID();
   next();
 }
-
-// ── Brukseksempel ─────────────────────────────────────────────────────────────────
-//
-// I Hub (utstede token ved innlogging):
-//   const token = utstederToken({ sub: bruker.id, name: bruker.navn, email: bruker.epost, roles: [bruker.rolle_id] });
-//
-// I alle tjenester (valider token):
-//   import { requireAuth, requireRole } from '../middleware/jwt.middleware.js';
-//   app.use('/api', requireAuth);
-//   app.use('/api/admin', requireAuth, requireRole('superadmin', 'mdu-leder'));
