@@ -15,36 +15,43 @@ import { FiberAdapter } from './adapters/fiber/FiberAdapter.js';
 import { MobileAdapter } from './adapters/mobile/MobileAdapter.js';
 import { TvAdapter } from './adapters/tv/TvAdapter.js';
 import { PricingAdapter } from './adapters/pricing/PricingAdapter.js';
+import { CustomerAdapter } from './adapters/customer/CustomerAdapter.js';
 
 import { createProductsRouter } from './api/products.js';
 import { createCustomersRouter } from './api/customers.js';
 import { createPricingRouter } from './api/pricing.js';
+import { createCustomerAdapterRouter } from './adapters/customer/CustomerRouter.js';
+import { createEventBusRouter } from './events/EventBusRouter.js';
+import { correlationIdMiddleware } from './middleware/jwt.middleware.js';
 import { HealthResponse } from './types/domain.js';
 
 const PORT = parseInt(process.env.PORT ?? process.env.INTEGRATION_PORT ?? '3010', 10);
 const startedAt = Date.now();
 
-// ─── Infrastruktur ────────────────────────────────────────────────────────
+// ─── Infrastruktur ──────────────────────────────────────────────────────────────────
 
 const cache = new InMemoryCache(60);
 const eventBus = new InMemoryEventBus();
 const registry = new AdapterRegistry(cache);
 
-// ─── Registrer adaptere ───────────────────────────────────────────────────
+// ─── Registrer adaptere ─────────────────────────────────────────────────────────────
 
 const fiberAdapter = new FiberAdapter();
 const mobileAdapter = new MobileAdapter();
 const tvAdapter = new TvAdapter();
 const pricingAdapter = new PricingAdapter();
+const customerAdapter = new CustomerAdapter();
 
-// FiberAdapter dekker både produkt og kunde-data (kilde-systemet er ett)
+// Produkt-adaptere
 registry.registerProductAdapter(fiberAdapter);
 registry.registerProductAdapter(mobileAdapter);
 registry.registerProductAdapter(tvAdapter);
-registry.registerCustomerAdapter(fiberAdapter);
 registry.registerPricingAdapter(pricingAdapter);
 
-// ─── Kafka (stub i POC — aktiveres med KAFKA_ENABLED=true) ───────────────
+// CustomerAdapter er ny master for alle kundedata
+registry.registerCustomerAdapter(customerAdapter);
+
+// ─── Kafka (stub i POC — aktiveres med KAFKA_ENABLED=true) ─────────────────────
 
 const kafkaStub = new KafkaStub(
   {
@@ -60,19 +67,24 @@ const kafkaStub = new KafkaStub(
   eventBus,
 );
 
-// Eksempel på event-handler — CPQ-modulen kan også abonnere på disse
-eventBus.subscribe('telenor.pricing.campaign.activated', async (event) => {
-  logger.info('Campaign activated via event', { campaignId: event.payload.campaignId });
-  cache.delete('campaigns:all');  // Invalider cache
+// Eksempel på event-handler — Incentive Manager lytter på visit.completed
+eventBus.subscribe('visit.completed', async (event) => {
+  logger.info('Visit completed — trigger incentive calculation', { payload: event.payload });
 });
 
-// ─── Express-oppsett ──────────────────────────────────────────────────────
+eventBus.subscribe('telenor.pricing.campaign.activated', async (event) => {
+  logger.info('Campaign activated via event', { campaignId: event.payload.campaignId });
+  cache.delete('campaigns:all');
+});
+
+// ─── Express-oppsett ───────────────────────────────────────────────────────────────
 
 const app = express();
 app.use(cors({ origin: '*' }));
 app.use(express.json());
+app.use(correlationIdMiddleware);     // correlation-ID tidlig i kjeden
 
-// ─── Helse-endepunkt ──────────────────────────────────────────────────────
+// ─── Helse-endepunkt ───────────────────────────────────────────────────────────────
 
 app.get('/health', async (_req, res) => {
   const adapters = await registry.getAdapterHealth();
@@ -91,19 +103,24 @@ app.get('/health', async (_req, res) => {
   res.status(allHealthy ? 200 : 207).json(response);
 });
 
-// ─── API-ruter ────────────────────────────────────────────────────────────
+// ─── API-ruter ──────────────────────────────────────────────────────────────────────
 
 // Produktkatalog
 app.use('/products', createProductsRouter(registry));
 
 // Kunder og beboere (bakoverkompatibelt med KAS Core mock URL-er)
-const customersRouter = createCustomersRouter(registry);
-app.use('/', customersRouter);
+app.use('/', createCustomersRouter(registry));
 
 // Prising og kampanjer
 app.use('/pricing', createPricingRouter(registry));
 
-// ─── Start ────────────────────────────────────────────────────────────────
+// CustomerAdapter — ny master for SDU/MDU kundeintelligens
+app.use('/adapters/customer', createCustomerAdapterRouter());
+
+// EventBus — HTTP-grensesnitt
+app.use('/events', createEventBusRouter(eventBus));
+
+// ─── Start ────────────────────────────────────────────────────────────────────────────
 
 async function start(): Promise<void> {
   await kafkaStub.connect();
@@ -112,7 +129,13 @@ async function start(): Promise<void> {
     logger.info('Integration Layer started', {
       port: PORT,
       kafkaEnabled: kafkaStub.isEnabled(),
-      adapters: [fiberAdapter.name, mobileAdapter.name, tvAdapter.name, pricingAdapter.name],
+      adapters: [
+        fiberAdapter.name,
+        mobileAdapter.name,
+        tvAdapter.name,
+        pricingAdapter.name,
+        customerAdapter.name,
+      ],
     });
   });
 }
@@ -122,4 +145,4 @@ start().catch(err => {
   process.exit(1);
 });
 
-export { app, registry };
+export { app, registry, eventBus };
