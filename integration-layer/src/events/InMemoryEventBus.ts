@@ -6,11 +6,20 @@ import { IEventBus, EventHandler } from './IEventBus.js';
 import { IntegrationEvent, DataSource } from '../types/domain.js';
 import { logger } from '../logger.js';
 
+const MAX_LOG_SIZE = 500;
+
 export class InMemoryEventBus implements IEventBus {
   private handlers = new Map<string, Set<EventHandler>>();
+  private eventLog: IntegrationEvent[] = [];
 
   async publish(event: IntegrationEvent): Promise<void> {
     logger.info('Event published', { eventType: event.eventType, source: event.source, eventId: event.eventId });
+
+    // Lagre i event-logg (maks 500 entries, eldste kastes)
+    this.eventLog.push(event);
+    if (this.eventLog.length > MAX_LOG_SIZE) {
+      this.eventLog.shift();
+    }
 
     const handlers = this.handlers.get(event.eventType);
     if (!handlers || handlers.size === 0) return;
@@ -27,6 +36,12 @@ export class InMemoryEventBus implements IEventBus {
 
   unsubscribe(eventType: string, handler: EventHandler): void {
     this.handlers.get(eventType)?.delete(handler);
+  }
+
+  // Returner logg, valgfritt filtrert på topic (brukes av EventBusRouter /events/log)
+  getLog(topicFilter?: string): IntegrationEvent[] {
+    if (!topicFilter) return [...this.eventLog].reverse();
+    return this.eventLog.filter(e => e.eventType === topicFilter).reverse();
   }
 
   // Hjelpemetode — publiser event med auto-generert ID og timestamp
