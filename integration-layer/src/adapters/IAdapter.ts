@@ -46,3 +46,26 @@ export interface IPricingAdapter extends IBaseAdapter {
   getCampaignsForSegment(segment: CustomerSegment): Promise<Campaign[]>;
   calculatePrice(productId: string, customerId?: string): Promise<PricedProduct | null>;
 }
+
+// ─── E-postadapter — SMTP / SendGrid ────────────────────────────────────────
+
+export type EmailProvider = 'disabled' | 'sendgrid' | 'smtp';
+
+export interface EmailMessage {
+  to: string;
+  subject: string;
+  body: string;
+  html?: string;
+}
+
+export interface EmailSendResult {
+  sent: boolean;
+  provider: EmailProvider;
+  skipped?: boolean;
+  messageId?: string;
+}
+
+export interface IEmailAdapter extends IBaseAdapter {
+  readonly provider: EmailProvider;
+  sendEmail(message: EmailMessage): Promise<EmailSendResult>;
+}

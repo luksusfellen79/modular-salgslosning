@@ -15,7 +15,9 @@ export type DataSource =
   | 'sales-core'
   | 'mdu-crm'
   | 'workflow-module'
-  | 'incentive-manager';
+  | 'incentive-manager'
+  | 'case-service'
+  | 'email-adapter';
 
 export type ProductCategory = 'fiber' | 'mobile' | 'tv' | 'security' | 'bundle';
 

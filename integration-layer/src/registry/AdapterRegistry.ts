@@ -6,6 +6,9 @@ import {
   IProductAdapter,
   ICustomerAdapter,
   IPricingAdapter,
+  IEmailAdapter,
+  EmailMessage,
+  EmailSendResult,
 } from '../adapters/IAdapter.js';
 import {
   Product,
@@ -25,6 +28,7 @@ export class AdapterRegistry {
   private productAdapters: IProductAdapter[] = [];
   private customerAdapter: ICustomerAdapter | null = null;
   private pricingAdapter: IPricingAdapter | null = null;
+  private emailAdapter: IEmailAdapter | null = null;
   private cache: InMemoryCache;
 
   constructor(cache: InMemoryCache) {
@@ -46,6 +50,24 @@ export class AdapterRegistry {
   registerPricingAdapter(adapter: IPricingAdapter): void {
     this.pricingAdapter = adapter;
     logger.info('Pricing adapter registered', { name: adapter.name, source: adapter.sourceId });
+  }
+
+  registerEmailAdapter(adapter: IEmailAdapter): void {
+    this.emailAdapter = adapter;
+    logger.info('Email adapter registered', { name: adapter.name, provider: adapter.provider });
+  }
+
+  // ─── E-post ──────────────────────────────────────────────────────────────
+
+  async sendEmail(message: EmailMessage): Promise<EmailSendResult> {
+    if (!this.emailAdapter) {
+      return { sent: false, provider: 'disabled', skipped: true };
+    }
+    return this.emailAdapter.sendEmail(message);
+  }
+
+  getEmailProvider(): string {
+    return this.emailAdapter?.provider ?? 'disabled';
   }
 
   // ─── Produkter — aggregerer fra alle produkt-adaptere ───────────────────
@@ -221,6 +243,15 @@ export class AdapterRegistry {
 
     if (this.pricingAdapter) {
       const a = this.pricingAdapter;
+      checks.push(
+        a.isHealthy()
+          .then(healthy => ({ adapterId: a.sourceId, name: a.name, source: a.sourceId, healthy, checkedAt: new Date().toISOString() }))
+          .catch(() => ({ adapterId: a.sourceId, name: a.name, source: a.sourceId, healthy: false, checkedAt: new Date().toISOString() }))
+      );
+    }
+
+    if (this.emailAdapter) {
+      const a = this.emailAdapter;
       checks.push(
         a.isHealthy()
           .then(healthy => ({ adapterId: a.sourceId, name: a.name, source: a.sourceId, healthy, checkedAt: new Date().toISOString() }))

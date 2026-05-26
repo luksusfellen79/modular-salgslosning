@@ -16,11 +16,13 @@ import { MobileAdapter } from './adapters/mobile/MobileAdapter.js';
 import { TvAdapter } from './adapters/tv/TvAdapter.js';
 import { PricingAdapter } from './adapters/pricing/PricingAdapter.js';
 import { CustomerAdapter } from './adapters/customer/CustomerAdapter.js';
+import { EmailAdapter } from './adapters/email/EmailAdapter.js';
 
 import { createProductsRouter } from './api/products.js';
 import { createCustomersRouter } from './api/customers.js';
 import { createPricingRouter } from './api/pricing.js';
 import { createCustomerAdapterRouter } from './adapters/customer/CustomerRouter.js';
+import { createEmailAdapterRouter } from './adapters/email/EmailRouter.js';
 import { createSduProductsRouter } from './api/sdu-products.js';
 import { createMduProductsRouter } from './api/mdu-products.js';
 import { createEventBusRouter } from './events/EventBusRouter.js';
@@ -45,12 +47,14 @@ const mobileAdapter = new MobileAdapter();
 const tvAdapter = new TvAdapter();
 const pricingAdapter = new PricingAdapter();
 const customerAdapter = new CustomerAdapter();
+const emailAdapter = new EmailAdapter();
 
 // Produkt-adaptere
 registry.registerProductAdapter(fiberAdapter);
 registry.registerProductAdapter(mobileAdapter);
 registry.registerProductAdapter(tvAdapter);
 registry.registerPricingAdapter(pricingAdapter);
+registry.registerEmailAdapter(emailAdapter);
 
 // FiberAdapter leverer beboerdata (SDU) — samme bygg-ID-er som Sales Core/KAS Core mock
 registry.registerCustomerAdapter(fiberAdapter);
@@ -122,6 +126,9 @@ app.use('/pricing', createPricingRouter(registry));
 // CustomerAdapter — ny master for SDU/MDU kundeintelligens
 app.use('/adapters/customer', createCustomerAdapterRouter());
 
+// EmailAdapter — sentral e-posttjeneste
+app.use('/adapters/email', createEmailAdapterRouter(emailAdapter));
+
 // EventBus — HTTP-grensesnitt + SSE
 app.use('/events', createEventBusRouter(eventBus));
 
@@ -145,6 +152,7 @@ async function start(): Promise<void> {
         tvAdapter.name,
         pricingAdapter.name,
         customerAdapter.name,
+        emailAdapter.name,
       ],
     });
   });

@@ -54,4 +54,37 @@ describe('EventBus integration chain', () => {
       .send({ topic: 'unknown.topic', source: 'test', payload: {} });
     expect(res.status).toBe(400);
   });
+
+  it('accepts case.created topic', async () => {
+    const res = await request(app)
+      .post('/events/publish')
+      .send({
+        topic: 'case.created',
+        source: 'case-service',
+        payload: { caseId: 'c1', saksnummer: 'CS-2026-00001', typeKode: 'FIBER_FEIL' },
+      });
+    expect(res.status).toBe(202);
+    expect(res.body.published).toBe(true);
+  });
+
+  it('accepts failure topic order.failed', async () => {
+    const res = await request(app)
+      .post('/events/publish')
+      .send({
+        topic: 'order.failed',
+        source: 'sales-core',
+        payload: { orderId: 'ord-1', error: 'Ordre avvist' },
+      });
+    expect(res.status).toBe(202);
+    expect(res.body.published).toBe(true);
+  });
+
+  it('GET /events/topics includes case and failure topics', async () => {
+    const res = await request(app).get('/events/topics');
+    expect(res.status).toBe(200);
+    expect(res.body.topics).toContain('case.created');
+    expect(res.body.topics).toContain('case.sla_breached');
+    expect(res.body.topics).toContain('order.failed');
+    expect(res.body.topics).toContain('fiber.failed');
+  });
 });
