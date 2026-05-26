@@ -11,13 +11,74 @@ import { Request, Response, NextFunction } from 'express';
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-BYTT-MEG-I-PROD';
 const JWT_EXPIRES_IN = '8h';
 
+// ── Salgsroller ─────────────────────────────────────────────────────────────
+
+export const SalesRoles = {
+  SUPERADMIN: 'superadmin',
+  MDU_SELGER: 'mdu-selger',
+  MDU_LEDER: 'mdu-leder',
+  SDU_SELGER: 'sdu-selger',
+  SDU_LEDER: 'sdu-leder',
+} as const;
+
+// ── Case Service-roller ─────────────────────────────────────────────────────
+
+export const CaseRoles = {
+  KUNDESERVICE: 'kundeservice',
+  TEKNISK_ORDRE: 'teknisk-ordre',
+  TEKNISK_AKTIVERING: 'teknisk-aktivering',
+  TEKNISK_FIBER: 'teknisk-fiber',
+  TEKNISK_MOBIL: 'teknisk-mobil',
+  TEKNISK_FAKTURA: 'teknisk-faktura',
+  CASE_ADMIN: 'case-admin',
+} as const;
+
+export type CaseRole = typeof CaseRoles[keyof typeof CaseRoles];
+
+export const ALL_CASE_ROLES: CaseRole[] = Object.values(CaseRoles);
+
+export const ALL_JWT_ROLES: string[] = [
+  ...Object.values(SalesRoles),
+  ...ALL_CASE_ROLES,
+];
+
+export function isCaseRole(role: string): role is CaseRole {
+  return (ALL_CASE_ROLES as readonly string[]).includes(role);
+}
+
+export function isTekniskRole(role: string): boolean {
+  return role.startsWith('teknisk-');
+}
+
+/** Map hub.rolle_id → JWT roles[] */
+export function rolleIdToJwtRoles(rolleId: string): string[] {
+  if (rolleId === SalesRoles.SUPERADMIN) {
+    return [SalesRoles.SUPERADMIN, CaseRoles.CASE_ADMIN, ...ALL_CASE_ROLES];
+  }
+  if (rolleId === CaseRoles.CASE_ADMIN) {
+    return [CaseRoles.CASE_ADMIN, CaseRoles.KUNDESERVICE, ...ALL_CASE_ROLES.filter((r) => r !== CaseRoles.CASE_ADMIN)];
+  }
+  return [rolleId];
+}
+
+export function hasAnyRole(bruker: JwtPayload, ...roles: string[]): boolean {
+  return roles.some((r) => bruker.roles.includes(r));
+}
+
+export function canAccessCaseGruppe(bruker: JwtPayload, gruppe: string): boolean {
+  if (hasAnyRole(bruker, SalesRoles.SUPERADMIN, CaseRoles.CASE_ADMIN, CaseRoles.KUNDESERVICE)) {
+    return true;
+  }
+  return bruker.roles.includes(gruppe);
+}
+
 // ── Token-payload (Azure AD-kompatible feltnavn) ────────────────────────────
 
 export interface JwtPayload {
   sub: string;           // bruker_id (UUID)
   name: string;          // fullt navn
   email: string;         // epost
-  roles: string[];       // ['superadmin'] | ['mdu-selger'] | ['sdu-leder'] osv.
+  roles: string[];       // salgs- og case-roller fra hub.roller
   iat?: number;
   exp?: number;
 }
@@ -100,6 +161,13 @@ export function requireRole(...roller: string[]) {
 
     next();
   };
+}
+
+// ── Express middleware: krev Case Service-tilgang ──────────────────────────────
+
+export function requireCaseRole(...roller: string[]) {
+  const allowed = [...roller, CaseRoles.CASE_ADMIN, SalesRoles.SUPERADMIN];
+  return requireRole(...allowed);
 }
 
 // ── Correlation ID middleware (legg inn tidlig i middleware-kjeden) ──────────────

@@ -1,7 +1,21 @@
 const SALES_CORE = (import.meta.env.VITE_SALES_CORE_URL as string | undefined) ?? 'http://localhost:3005';
 
-export type AppPermission = 'mdu_crm' | 'mdu_leder' | 'sdu_crm' | 'sdu_planner' | 'sdu_incentives';
-export type UserRole = 'superadmin' | 'salgsleder' | 'selger_sdu' | 'selger_mdu';
+export type AppPermission =
+  | 'mdu_crm'
+  | 'mdu_leder'
+  | 'sdu_crm'
+  | 'sdu_planner'
+  | 'sdu_incentives'
+  | 'case_app';
+
+export type UserRole =
+  | 'superadmin'
+  | 'salgsleder'
+  | 'selger_sdu'
+  | 'selger_mdu'
+  | 'kundeservice'
+  | 'case_admin'
+  | 'case_teknisk';
 
 export interface HubUser {
   id: string;
@@ -9,13 +23,17 @@ export interface HubUser {
   email: string;
   role: UserRole;
   permissions: AppPermission[];
+  rolleId: string;
+  jwtRoles: string[];
   isActive: boolean;
   lastLoginAt?: string;
   createdAt: string;
   createdBy: string;
 }
 
-export interface LoginResult extends HubUser {}
+export interface LoginResult extends HubUser {
+  token: string;
+}
 
 export async function login(name: string, pin: string): Promise<LoginResult> {
   const res = await fetch(`${SALES_CORE}/api/auth/login`, {

@@ -14,6 +14,7 @@ import {
   writeUsers as writeUsersJson,
 } from './index';
 import { HubUser, Opportunity, Round, RoundUnit, Seller } from '../types';
+import { roleToRolleId, rolleIdToJwtRoles } from '../db/mappers';
 
 export async function getOpportunities(): Promise<Opportunity[]> {
   if (usePostgres()) return mduRepo.listMduDeals();
@@ -143,7 +144,12 @@ export async function loginUser(name: string, pin: string): Promise<Omit<HubUser
   const updated = { ...user, lastLoginAt: new Date().toISOString() };
   writeUsersJson(users.map((u) => (u.id === user.id ? updated : u)));
   const { pin: _pin, ...safe } = updated;
-  return safe;
+  const rolleId = safe.rolleId ?? roleToRolleId(safe.role, safe.permissions);
+  return {
+    ...safe,
+    rolleId,
+    jwtRoles: safe.jwtRoles ?? rolleIdToJwtRoles(rolleId),
+  };
 }
 
 export async function createUser(user: HubUser): Promise<Omit<HubUser, 'pin'>> {

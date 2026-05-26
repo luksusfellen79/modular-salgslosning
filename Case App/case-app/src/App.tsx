@@ -1,6 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { bootstrapHubSession, getAppContext } from './lib/session';
-import { RolePickerView } from './views/RolePickerView';
+import { HomeRoute } from './views/HomeRoute';
 import { KundeserviceView } from './views/KundeserviceView';
 import { TekniskView } from './views/TekniskView';
 import { SaksdetaljerView } from './views/SaksdetaljerView';
@@ -18,7 +18,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<RolePickerView />} />
+        <Route path="/" element={<HomeRoute />} />
         <Route
           path="/kundeservice"
           element={

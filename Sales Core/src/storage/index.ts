@@ -113,7 +113,9 @@ export function writeRounds(data: Round[]): void {
 
 // ─── Auth: Brukerregister ─────────────────────────────────────────────────────
 
-const ALL_PERMISSIONS: AppPermission[] = ['mdu_crm', 'mdu_leder', 'sdu_crm', 'sdu_planner', 'sdu_incentives'];
+const ALL_PERMISSIONS: AppPermission[] = [
+  'mdu_crm', 'mdu_leder', 'sdu_crm', 'sdu_planner', 'sdu_incentives', 'case_app',
+];
 
 const USER_SEED: HubUser[] = [
   {
@@ -123,6 +125,8 @@ const USER_SEED: HubUser[] = [
     pin: '0000',
     role: 'superadmin',
     permissions: ALL_PERMISSIONS,
+    rolleId: 'superadmin',
+    jwtRoles: ['superadmin', 'case-admin', 'kundeservice', 'teknisk-ordre', 'teknisk-aktivering', 'teknisk-fiber', 'teknisk-mobil', 'teknisk-faktura', 'case-admin'],
     isActive: true,
     createdAt: '2026-01-15T08:00:00Z',
     createdBy: 'system',
@@ -134,6 +138,8 @@ const USER_SEED: HubUser[] = [
     pin: '1234',
     role: 'salgsleder',
     permissions: ['sdu_planner', 'sdu_incentives', 'sdu_crm'],
+    rolleId: 'sdu-leder',
+    jwtRoles: ['sdu-leder'],
     isActive: true,
     createdAt: '2026-01-15T08:00:00Z',
     createdBy: 'usr-1',
@@ -145,6 +151,8 @@ const USER_SEED: HubUser[] = [
     pin: '1234',
     role: 'salgsleder',
     permissions: ['mdu_leder', 'mdu_crm'],
+    rolleId: 'mdu-leder',
+    jwtRoles: ['mdu-leder'],
     isActive: true,
     createdAt: '2026-01-15T08:00:00Z',
     createdBy: 'usr-1',
@@ -156,6 +164,8 @@ const USER_SEED: HubUser[] = [
     pin: '1234',
     role: 'selger_sdu',
     permissions: ['sdu_crm'],
+    rolleId: 'sdu-selger',
+    jwtRoles: ['sdu-selger'],
     isActive: true,
     createdAt: '2026-01-15T08:00:00Z',
     createdBy: 'usr-1',
@@ -167,6 +177,8 @@ const USER_SEED: HubUser[] = [
     pin: '1234',
     role: 'selger_sdu',
     permissions: ['sdu_crm'],
+    rolleId: 'sdu-selger',
+    jwtRoles: ['sdu-selger'],
     isActive: true,
     createdAt: '2026-01-15T08:00:00Z',
     createdBy: 'usr-1',
@@ -178,8 +190,36 @@ const USER_SEED: HubUser[] = [
     pin: '1234',
     role: 'selger_mdu',
     permissions: ['mdu_crm'],
+    rolleId: 'mdu-selger',
+    jwtRoles: ['mdu-selger'],
     isActive: true,
     createdAt: '2026-01-15T08:00:00Z',
+    createdBy: 'usr-1',
+  },
+  {
+    id: 'usr-7',
+    name: 'Anna Kundeservice',
+    email: 'anna.kundeservice@telenor.com',
+    pin: '1234',
+    role: 'kundeservice',
+    permissions: ['case_app'],
+    rolleId: 'kundeservice',
+    jwtRoles: ['kundeservice'],
+    isActive: true,
+    createdAt: '2026-02-01T08:00:00Z',
+    createdBy: 'usr-1',
+  },
+  {
+    id: 'usr-8',
+    name: 'Tom Fiber',
+    email: 'tom.fiber@telenor.com',
+    pin: '1234',
+    role: 'case_teknisk',
+    permissions: ['case_app'],
+    rolleId: 'teknisk-fiber',
+    jwtRoles: ['teknisk-fiber'],
+    isActive: true,
+    createdAt: '2026-02-01T08:00:00Z',
     createdBy: 'usr-1',
   },
 ];
@@ -195,15 +235,19 @@ export function readUsers(): HubUser[] {
   }
   _usersBootstrapped = true;
 
-  // Backfill: ensure superadmin always has mdu_leder permission
+  // Backfill: ensure superadmin always has mdu_leder + case_app permission
   const needsWrite = stored.some(
-    (u) => u.role === 'superadmin' && !u.permissions.includes('mdu_leder')
+    (u) => u.role === 'superadmin' && (!u.permissions.includes('mdu_leder') || !u.permissions.includes('case_app')),
   );
   if (needsWrite) {
     const patched = stored.map((u) =>
-      u.role === 'superadmin' && !u.permissions.includes('mdu_leder')
-        ? { ...u, permissions: [...u.permissions, 'mdu_leder'] as AppPermission[] }
-        : u
+      u.role === 'superadmin'
+        ? {
+            ...u,
+            permissions: [...new Set([...u.permissions, 'mdu_leder', 'case_app'])] as AppPermission[],
+            rolleId: u.rolleId ?? 'superadmin',
+          }
+        : u,
     );
     writeJsonFile('auth-users.json', patched);
     return patched;

@@ -91,6 +91,8 @@ const HUB_USER_SEED = [
   { id: SEED_USER_IDS.lise, name: 'Lise Berg', email: 'lise.berg@telenor.com', pin: '1234', rolleId: 'mdu-selger' },
   { id: SEED_USER_IDS.erik, name: 'Erik Johansen', email: 'erik.johansen@telenor.com', pin: '1234', rolleId: 'sdu-selger' },
   { id: SEED_USER_IDS.ingrid, name: 'Ingrid Sørensen', email: 'ingrid.sorensen@telenor.com', pin: '1234', rolleId: 'sdu-selger' },
+  { id: SEED_USER_IDS.anna, name: 'Anna Kundeservice', email: 'anna.kundeservice@telenor.com', pin: '1234', rolleId: 'kundeservice' },
+  { id: SEED_USER_IDS.tom, name: 'Tom Fiber', email: 'tom.fiber@telenor.com', pin: '1234', rolleId: 'teknisk-fiber' },
 ];
 
 const SDU_SELLER_IDS = [

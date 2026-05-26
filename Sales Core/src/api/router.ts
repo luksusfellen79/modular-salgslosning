@@ -32,6 +32,8 @@ import { Offer, OfferEvent, Opportunity, OpportunityStage, Round, RoundUnit, Sel
 import { sseManager } from '../events/sse-manager';
 import { emitIntegrationEvent } from '../events/integrationLayerPublisher';
 import { EventTopics } from '../events/topics';
+import { enrichAuthResponse } from '../auth/jwt';
+import { roleToRolleId, rolleIdToJwtRoles } from '../db/mappers';
 
 export const router = express.Router();
 router.use(express.json());
@@ -731,7 +733,7 @@ router.post('/api/auth/login', async (req: Request, res: Response) => {
     return res.status(401).json({ error: 'Feil navn eller PIN' });
   }
 
-  res.json(safeUser);
+  res.json(enrichAuthResponse(safeUser));
 });
 
 // GET /api/auth/users — hent alle brukere (superadmin)
@@ -751,6 +753,7 @@ router.post('/api/auth/users', async (req: Request, res: Response) => {
     return res.status(409).json({ error: 'Bruker med denne e-posten finnes allerede' });
   }
 
+  const rolleId = roleToRolleId(body.role as UserRole, (body.permissions ?? []) as AppPermission[]);
   const newUser: HubUser = {
     id: `usr-${uuid()}`,
     name: body.name,
@@ -758,6 +761,8 @@ router.post('/api/auth/users', async (req: Request, res: Response) => {
     pin: body.pin,
     role: body.role as UserRole,
     permissions: (body.permissions ?? []) as AppPermission[],
+    rolleId,
+    jwtRoles: rolleIdToJwtRoles(rolleId),
     isActive: body.isActive ?? true,
     createdAt: new Date().toISOString(),
     createdBy: body.createdBy ?? 'superadmin',

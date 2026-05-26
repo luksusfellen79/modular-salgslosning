@@ -8,6 +8,9 @@ export interface HubSession {
   name: string;
   email?: string;
   role?: string;
+  rolleId?: string;
+  jwtRoles?: string[];
+  token?: string;
 }
 
 export interface AppContext {

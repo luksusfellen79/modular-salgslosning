@@ -1,11 +1,18 @@
 import { useNavigate } from 'react-router-dom';
 import { TelenorLogo } from '../components/TelenorLogo';
 import { saveAppContext, getHubSession } from '../lib/session';
+import { allowedTekniskGroups, canPickAnyCaseRole } from '../lib/roles';
 import { TEKNISKE_GRUPPER, TekniskGruppe } from '../lib/types';
 
 export function RolePickerView() {
   const navigate = useNavigate();
   const hub = getHubSession();
+  const showKundeservice = canPickAnyCaseRole(hub?.rolleId, hub?.jwtRoles)
+    || hub?.rolleId === 'kundeservice';
+  const tekniskGroups = allowedTekniskGroups(hub?.rolleId, hub?.jwtRoles);
+  const visibleTeknisk = tekniskGroups === 'all'
+    ? TEKNISKE_GRUPPER
+    : TEKNISKE_GRUPPER.filter((g) => tekniskGroups.includes(g.id));
 
   const selectKundeservice = () => {
     saveAppContext({ mode: 'kundeservice' });
@@ -26,38 +33,46 @@ export function RolePickerView() {
         </div>
         <h1 className="text-3xl font-bold text-white mb-1">Saksbehandling</h1>
         <p className="text-sm text-white/60">
-          {hub ? `Innlogget som ${hub.name}` : 'Velg arbeidsflate'}
+          {hub ? `Innlogget som ${hub.name}${hub.rolleId ? ` (${hub.rolleId})` : ''}` : 'Velg arbeidsflate'}
         </p>
       </div>
 
       <div className="w-full max-w-md space-y-4">
-        <button
-          type="button"
-          onClick={selectKundeservice}
-          className="w-full rounded-2xl border border-white/20 bg-white/10 p-5 text-left hover:bg-white/20 transition"
-        >
-          <div className="text-lg font-bold text-white">Kundeservice</div>
-          <div className="text-sm text-white/60 mt-1">Alle saker, opprett, lukk og gjenåpne</div>
-        </button>
+        {showKundeservice && (
+          <button
+            type="button"
+            onClick={selectKundeservice}
+            className="w-full rounded-2xl border border-white/20 bg-white/10 p-5 text-left hover:bg-white/20 transition"
+          >
+            <div className="text-lg font-bold text-white">Kundeservice</div>
+            <div className="text-sm text-white/60 mt-1">Alle saker, opprett, lukk og gjenåpne</div>
+          </button>
+        )}
 
-        <div className="pt-2">
-          <div className="text-xs font-semibold uppercase tracking-wide text-white/40 mb-3 px-1">
-            Teknisk gruppe
+        {visibleTeknisk.length > 0 && (
+          <div className="pt-2">
+            <div className="text-xs font-semibold uppercase tracking-wide text-white/40 mb-3 px-1">
+              Teknisk gruppe
+            </div>
+            <div className="space-y-2">
+              {visibleTeknisk.map((g) => (
+                <button
+                  key={g.id}
+                  type="button"
+                  onClick={() => selectTeknisk(g.id)}
+                  className="w-full rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-left hover:bg-white/15 transition"
+                >
+                  <div className="text-white font-medium">{g.label}</div>
+                  <div className="text-xs text-white/45 mt-0.5">{g.id}</div>
+                </button>
+              ))}
+            </div>
           </div>
-          <div className="space-y-2">
-            {TEKNISKE_GRUPPER.map((g) => (
-              <button
-                key={g.id}
-                type="button"
-                onClick={() => selectTeknisk(g.id)}
-                className="w-full rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-left hover:bg-white/15 transition"
-              >
-                <div className="text-white font-medium">{g.label}</div>
-                <div className="text-xs text-white/45 mt-0.5">{g.id}</div>
-              </button>
-            ))}
-          </div>
-        </div>
+        )}
+
+        {!showKundeservice && visibleTeknisk.length === 0 && (
+          <p className="text-center text-sm text-white/60">Ingen Case-tilgang for denne brukeren.</p>
+        )}
       </div>
     </div>
   );

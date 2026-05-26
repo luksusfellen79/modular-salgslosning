@@ -24,28 +24,49 @@ export const SEED_USER_IDS = {
   lise: 'a0000006-0000-4000-8000-000000000006',
   erik: 'a0000007-0000-4000-8000-000000000007',
   ingrid: 'a0000008-0000-4000-8000-000000000008',
+  anna: 'a0000009-0000-4000-8000-000000000009',
+  tom: 'a0000010-0000-4000-8000-000000000010',
 } as const;
 
+export const CASE_ROLLE_IDS = [
+  'kundeservice',
+  'teknisk-ordre',
+  'teknisk-aktivering',
+  'teknisk-fiber',
+  'teknisk-mobil',
+  'teknisk-faktura',
+  'case-admin',
+] as const;
+
+export type CaseRolleId = typeof CASE_ROLLE_IDS[number];
+
 const ALL_PERMISSIONS: AppPermission[] = [
-  'mdu_crm', 'mdu_leder', 'sdu_crm', 'sdu_planner', 'sdu_incentives',
+  'mdu_crm', 'mdu_leder', 'sdu_crm', 'sdu_planner', 'sdu_incentives', 'case_app',
 ];
 
-export function legacyOppId(id: string): string {
-  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
-    return id;
-  }
-  return uuidv5(id, LEGACY_OPP_NS);
+export function isCaseRolleId(rolleId: string): rolleId is CaseRolleId {
+  return (CASE_ROLLE_IDS as readonly string[]).includes(rolleId);
 }
 
-export function legacyRndId(id: string): string {
-  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
-    return id;
+export function isTekniskRolleId(rolleId: string): boolean {
+  return rolleId.startsWith('teknisk-');
+}
+
+/** Map hub.rolle_id → JWT roles[] (Azure AD-kompatibel) */
+export function rolleIdToJwtRoles(rolleId: string): string[] {
+  if (rolleId === 'superadmin') {
+    return ['superadmin', 'case-admin', ...CASE_ROLLE_IDS];
   }
-  return uuidv5(id, LEGACY_RND_NS);
+  if (rolleId === 'case-admin') {
+    return ['case-admin', 'kundeservice', ...CASE_ROLLE_IDS.filter((r) => r !== 'case-admin')];
+  }
+  return [rolleId];
 }
 
 export function roleToRolleId(role: UserRole, permissions?: AppPermission[]): string {
   if (role === 'superadmin') return 'superadmin';
+  if (role === 'kundeservice') return 'kundeservice';
+  if (role === 'case_admin') return 'case-admin';
   if (role === 'selger_mdu') return 'mdu-selger';
   if (role === 'selger_sdu') return 'sdu-selger';
   if (permissions?.includes('mdu_leder')) return 'mdu-leder';
@@ -63,9 +84,34 @@ export function rolleIdToHubFields(rolleId: string): { role: UserRole; permissio
     case 'mdu-selger':
       return { role: 'selger_mdu', permissions: ['mdu_crm'] };
     case 'sdu-selger':
+      return { role: 'selger_sdu', permissions: ['sdu_crm'] };
+    case 'kundeservice':
+      return { role: 'kundeservice', permissions: ['case_app'] };
+    case 'case-admin':
+      return { role: 'case_admin', permissions: ['case_app'] };
+    case 'teknisk-ordre':
+    case 'teknisk-aktivering':
+    case 'teknisk-fiber':
+    case 'teknisk-mobil':
+    case 'teknisk-faktura':
+      return { role: 'case_teknisk', permissions: ['case_app'] };
     default:
       return { role: 'selger_sdu', permissions: ['sdu_crm'] };
   }
+}
+
+export function legacyOppId(id: string): string {
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+    return id;
+  }
+  return uuidv5(id, LEGACY_OPP_NS);
+}
+
+export function legacyRndId(id: string): string {
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+    return id;
+  }
+  return uuidv5(id, LEGACY_RND_NS);
 }
 
 interface DealMeta {
@@ -272,6 +318,8 @@ export function brukerRowToHubUser(row: {
     email: row.epost ?? '',
     role,
     permissions,
+    rolleId: row.rolle_id,
+    jwtRoles: rolleIdToJwtRoles(row.rolle_id),
     isActive: row.aktiv,
     lastLoginAt: row.sist_innlogget ? new Date(row.sist_innlogget).toISOString() : undefined,
     createdAt: new Date(row.opprettet).toISOString(),

@@ -12,6 +12,7 @@ const APP_URLS: Record<AppPermission, string> = {
   sdu_crm:       (import.meta.env.VITE_SDU_CRM_URL       as string | undefined) ?? 'http://localhost:5175',
   sdu_planner:   (import.meta.env.VITE_SDU_PLANNER_URL   as string | undefined) ?? 'http://localhost:5176',
   sdu_incentives:(import.meta.env.VITE_SDU_INCENTIVES_URL as string | undefined) ?? 'http://localhost:5177',
+  case_app:      (import.meta.env.VITE_CASE_APP_URL      as string | undefined) ?? 'http://localhost:5179',
 };
 
 // ─── Design ───────────────────────────────────────────────────────────────────
@@ -76,6 +77,14 @@ const APP_CARDS: AppCard[] = [
     color: '#D97706',
     gradient: 'linear-gradient(135deg, #D97706 0%, #92400E 100%)',
   },
+  {
+    permission: 'case_app',
+    title: 'Case',
+    subtitle: 'Saksbehandling og kundeservice',
+    icon: '🎫',
+    color: '#BE185D',
+    gradient: 'linear-gradient(135deg, #BE185D 0%, #831843 100%)',
+  },
 ];
 
 const ROLE_LABELS: Record<UserRole, string> = {
@@ -83,6 +92,9 @@ const ROLE_LABELS: Record<UserRole, string> = {
   salgsleder:  'Salgsleder',
   selger_sdu:  'Selger (SDU)',
   selger_mdu:  'Selger (MDU)',
+  kundeservice: 'Kundeservice',
+  case_admin:  'Case-admin',
+  case_teknisk: 'Teknisk (Case)',
 };
 
 const PERMISSION_LABELS: Record<AppPermission, string> = {
@@ -91,6 +103,7 @@ const PERMISSION_LABELS: Record<AppPermission, string> = {
   sdu_crm:        'Feltsalg',
   sdu_planner:    'SDU Planner',
   sdu_incentives: 'Incentiver',
+  case_app:       'Case App',
 };
 
 // ─── Telenor Logo ─────────────────────────────────────────────────────────────

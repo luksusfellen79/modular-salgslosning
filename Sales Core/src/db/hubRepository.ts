@@ -20,7 +20,14 @@ export async function ensureHubRoles(): Promise<void> {
       ('mdu-selger', 'MDU-selger, tilgang til MDU CRM'),
       ('mdu-leder', 'MDU-salgsleder, tilgang til MDU Leder og War Room'),
       ('sdu-selger', 'SDU-feltsalgsselger, tilgang til SDU CRM'),
-      ('sdu-leder', 'SDU-salgsleder, tilgang til SDU Planner')
+      ('sdu-leder', 'SDU-salgsleder, tilgang til SDU Planner'),
+      ('kundeservice', 'Kundeservice — alle saker, opprett/lukk/gjenåpne'),
+      ('teknisk-ordre', 'Teknisk ordre — ORDER_FEIL'),
+      ('teknisk-aktivering', 'Teknisk aktivering — AKTIVERING_FEIL og TV_FEIL'),
+      ('teknisk-fiber', 'Teknisk fiber — FIBER_FEIL'),
+      ('teknisk-mobil', 'Teknisk mobil — MOBILFEIL'),
+      ('teknisk-faktura', 'Teknisk faktura — FAKTURA_FEIL'),
+      ('case-admin', 'Case-administrator — konfigurer typer og regler')
     ON CONFLICT (rolle_id) DO NOTHING
   `);
 }

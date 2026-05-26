@@ -77,8 +77,22 @@ export interface SseNotification {
 
 // ─── Auth: Brukerregister og tilgangsstyring ──────────────────────────────────
 
-export type AppPermission = 'mdu_crm' | 'mdu_leder' | 'sdu_crm' | 'sdu_planner' | 'sdu_incentives';
-export type UserRole = 'superadmin' | 'salgsleder' | 'selger_sdu' | 'selger_mdu';
+export type AppPermission =
+  | 'mdu_crm'
+  | 'mdu_leder'
+  | 'sdu_crm'
+  | 'sdu_planner'
+  | 'sdu_incentives'
+  | 'case_app';
+
+export type UserRole =
+  | 'superadmin'
+  | 'salgsleder'
+  | 'selger_sdu'
+  | 'selger_mdu'
+  | 'kundeservice'
+  | 'case_admin'
+  | 'case_teknisk';
 
 export interface HubUser {
   id: string;
@@ -87,10 +101,19 @@ export interface HubUser {
   pin: string;              // 4-sifret PIN, klartekst (pilot)
   role: UserRole;
   permissions: AppPermission[];
+  /** hub.roller.rolle_id — brukes for JWT og Case App-ruting */
+  rolleId: string;
+  /** JWT roles[] — speiler rolleId (+ superadmin får case-admin) */
+  jwtRoles: string[];
   isActive: boolean;
   lastLoginAt?: string;
   createdAt: string;
   createdBy: string;
+}
+
+/** Respons fra POST /api/auth/login */
+export interface LoginResponse extends Omit<HubUser, 'pin'> {
+  token: string;
 }
 
 // ─── SDU: Selger-registry og besøksrunder ─────────────────────────────────────
