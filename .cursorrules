@@ -8,7 +8,8 @@ Prototypen kjører på Railway. Produksjonmål er Telenors Nova-plattform (Kuber
 ## Systemformål
 
 Selgerne brukte ikke Salesforce fordi UX var for dårlig. Målet er skreddersydde micro-apps per rolle og salgskanal,
-koblet sammen via en felles backend-arkitektur. Salesforce fases ut fullstendig.
+koblet sammen via en felles backend-arkitektur. Salesforce fases ut fullstendig — inkludert Service Cloud
+som erstattes av Case Service (se egen seksjon).
 
 ---
 
@@ -22,14 +23,16 @@ koblet sammen via en felles backend-arkitektur. Salesforce fases ut fullstendig.
             - InMemoryCache (TTL)
             - InMemoryEventBus + KafkaStub
             - Unified domain model med SourceMeta
+            - EmailAdapter (SMTP/SendGrid)
                       ↓
               [ Gateway Layer ]           ← Auth, routing, tilgangskontroll
                       ↓
-   [MDU CRM] [SDU CRM] [Planner] [Hub] [fremtidige moduler]
+   [MDU CRM] [SDU CRM] [Planner] [Hub] [Case App] [fremtidige moduler]
 
 [ Sales Core ]   ← salgsoperasjoner (pipeline, tilbud, selgerregister) — PostgreSQL
+[ Case Service ] ← ticketing/case-håndtering på tvers av verdikjeder — PostgreSQL
 [ KAS Core mock] ← LEGACY, beholdes kun for bakoverkompatibilitet. Migreres gradvis bort.
-[ PostgreSQL ]   ← Railway-hosted, schemas: hub / sales_core / sdu / mdu
+[ PostgreSQL ]   ← Railway-hosted, schemas: hub / sales_core / sdu / mdu / cases
 ```
 
 **Kritisk:** Integration Layer er ny master for alle data. KAS Core mock er legacy.
@@ -50,11 +53,13 @@ Nye moduler skal alltid hente fra Integration Layer, aldri direkte fra KAS Core.
 | SDU CRM (feltsalg)   | sdu-crm-production.up.railway.app                 | SDU CRM/feltsalg-app/          |
 | SDU Incentive Manager| sdu-incentives-production.up.railway.app          | SDU bonuser/incentive-manager/ |
 | SDU Planner          | sdu-planner-production.up.railway.app             | SDU Planner/planner-app/       |
+| Case Service         | (under bygging)                                   | Case Service/                  |
+| Case App             | (under bygging)                                   | Case App/case-app/             |
 | PostgreSQL           | postgres.railway.internal:5432 (intern)           | —                              |
 
 Railway project ID: e779d578-b2fb-4875-89d6-e88049d9ecca
 Production environment ID: 16574ee3-d441-4328-85e2-2685dc9027ac
-DATABASE_URL env-var satt på: salgshub, sales-core
+DATABASE_URL env-var satt på: salgshub, sales-core, case-service
 
 ---
 
@@ -80,7 +85,7 @@ DATABASE_URL env-var satt på: salgshub, sales-core
 
 ## Database (PostgreSQL på Railway) — LIVE
 
-PostgreSQL kjører på Railway. Fire schemas er opprettet:
+PostgreSQL kjører på Railway. Fem schemas (cases legges til ved Case Service-bygging):
 
 | Schema       | Tabeller                                           | Brukes av           |
 |--------------|----------------------------------------------------|---------------------|
@@ -88,6 +93,7 @@ PostgreSQL kjører på Railway. Fire schemas er opprettet:
 | `sales_core` | mdu_deals, mdu_deal_events, tilbud, sdu_selgere, sdu_runder, sdu_besøk | Sales Core |
 | `sdu`        | bonusregler, bonuser, månedlig_oppsummering        | SDU Incentive Mgr   |
 | `mdu`        | kunder, kontrakter, enhetsaktiveringer             | MDU CRM / MDU Leder |
+| `cases`      | saker, hendelser, typeregister, rutingregler       | Case Service        |
 
 ### Database-filstruktur i Sales Core og Hub
 
@@ -174,6 +180,90 @@ Gyldige topics (importer fra `integration-layer/src/events/EventTopics.ts`):
 - `visit.completed` / `round.created` / `round.completed`
 - `incentive.triggered` / `bonus.calculated`
 - `campaign.updated` / `product.updated`
+- `case.created` / `case.status_changed` / `case.escalated` / `case.assigned`
+- `case.sla_warning` / `case.sla_breached`
+
+---
+
+## Case Service — ticketing og saksbehandling
+
+> Fullstendig spec: se `case-service-spec.md` i repoet.
+> Case Service erstatter Salesforce Service Cloud.
+
+### Hva det er
+Sentralt system for opprettelse, ruting, eskalering og løsning av saker på tvers av verdikjeder.
+Fanger feil automatisk via EventBus og støtter manuell opprettelse. Kundeservice har alltid full oversikt.
+
+### Case-livssyklus
+```
+[OPPRETTET] → [TILDELT] → [UNDER_ARBEID] → [LØST] → [LUKKET]
+                                ↓
+                          [ESKALERT] → [UNDER_ARBEID_2LINJE] → [LØST] → [LUKKET]
+                                                                            ↓
+                                                                      [GJENÅPNET] → [TILDELT] ...
+```
+
+### Nøkkelregler
+- Tekniske grupper kan løse saker direkte uten CS-involvering
+- CS varsles alltid ved statusendring — de mister aldri oversikt
+- Saker kan gjenåpnes med full historikk bevart
+- SLA-støtte er bygget inn, aktiveres per casetype ved behov
+
+### Nye roller (legges til i Hub seed og JWT-middleware)
+| Rolle | Tilgang |
+|---|---|
+| `kundeservice` | Ser alle saker, oppretter/lukker/gjenåpner |
+| `teknisk-ordre` | Ser og løser ORDER_FEIL |
+| `teknisk-aktivering` | Ser og løser AKTIVERING_FEIL |
+| `teknisk-fiber` | Ser og løser FIBER_FEIL |
+| `teknisk-mobil` | Ser og løser MOBILFEIL |
+| `teknisk-faktura` | Ser og løser FAKTURA_FEIL |
+| `case-admin` | Konfigurerer typer, regler og grupper |
+
+### Mappe- og filstruktur
+```
+Case Service/
+  src/
+    index.ts               — Express app entry
+    routes/cases.ts        — alle API-endepunkter
+    db/
+      pool.ts              — delt pool via DATABASE_URL
+      caseRepository.ts    — CRUD mot cases.saker
+      eventRepository.ts   — skriv/les cases.hendelser
+      seed.ts              — seed casetyper og rutingregler
+    eventListener.ts       — abonnerer på feil-topics fra EventBus
+    router.ts              — routing-logikk (casetype → gruppe)
+    csIntegration.ts       — POST til eksternt kundeservicesystem
+    slaService.ts          — beregn frist, publiser sla_warning/breached
+
+Case App/case-app/
+  src/
+    views/
+      KundeserviceView.tsx  — alle saker, søk, sanntidsvarsler
+      TekniskView.tsx       — min kø, ta sak, løs, eskaler
+      SaksdetaljerView.tsx  — tidslinje, hendelseslogg, handlinger
+```
+
+### Env-vars (Railway)
+```
+CASE_SERVICE_URL       — brukes av andre tjenester for å opprette saker
+CS_API_URL             — eksternt kundeservicesystem
+CS_API_TOKEN           — auth mot CS_API_URL
+EMAIL_PROVIDER         — 'smtp' | 'sendgrid' | 'disabled' (default: disabled)
+EMAIL_FROM             — avsenderadresse
+SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_PASS   — hvis EMAIL_PROVIDER=smtp
+SENDGRID_API_KEY       — hvis EMAIL_PROVIDER=sendgrid
+```
+
+### Implementasjonsrekkefølge
+1. Database — `cases`-schema via `integration-layer/database/migrate.mjs`
+2. Case Service — Express API + EventBus-lytter + routing
+3. EventTopics.ts — legg til case-topics
+4. EmailAdapter — legg til i Integration Layer med `disabled` default
+5. Case App — frontend for kundeservice og teknisk gruppe
+6. CS-integrasjon — kobling mot eksternt system
+7. Roller — legg til i Hub seed og JWT-middleware
+8. Testsaker — seed eksempel-caser
 
 ---
 
@@ -215,6 +305,14 @@ MDU CRM → pipeline/kanban (`sales_core.mdu_deals`) → tilbud (`sales_core.til
 Selger → "Send til War Room" → deal.status = 'war-room' → MDU Leder godkjenner/avviser
 → status oppdateres til 'war-room-godkjent' eller 'war-room-avvist'
 
+### Case-flyt (automatisk)
+Verdikjede feiler → EventBus publiserer feil-topic → Case Service oppretter sak automatisk
+→ rutes til rett teknisk gruppe → løses → CS varsles → lukkes mot kunde
+
+### Case-flyt (manuell)
+CS oppretter sak → tildeles gruppe → løses (av teknisk gruppe eller CS) → lukkes
+→ hvis kunde ringer igjen: gjenåpnes med full historikk
+
 ---
 
 ## Kodekonvensjoner
@@ -247,6 +345,10 @@ Selger → "Send til War Room" → deal.status = 'war-room' → MDU Leder godkje
 ### Publiser hendelse fra en tjeneste
 → POST til `/events/publish` med topic fra `EventTopics.ts`
 
+### Opprett sak fra en verdikjede
+→ POST til `${CASE_SERVICE_URL}/cases` eller publiser feil-topic på EventBus
+→ Case Service oppretter saken automatisk ved feil-topics
+
 ### Ny DB-operasjon
 → Legg til metode i riktig repository-fil under `db/`
 → Bruk eksisterende `pool.ts` — ikke opprett ny pool
@@ -260,6 +362,8 @@ Selger → "Send til War Room" → deal.status = 'war-room' → MDU Leder godkje
 
 ## Neste migreringssteg (ikke gjort ennå)
 
+- [ ] **Case Service** — bygg backend, database-schema og EventBus-integrasjon
+- [ ] **Case App** — bygg frontend for kundeservice og tekniske grupper
 - [ ] Migrer `offers.json` → `sales_core.tilbud`
 - [ ] Migrer `events.json` → EventBus (PostgreSQL-backed log)
 - [ ] `sdu.bonusregler` + `sdu.bonuser` — koble SDU Incentive Manager til PostgreSQL
