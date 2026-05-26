@@ -33,7 +33,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const HASH_0000 = '$2b$10$rD3Ap6iZlepexPlPhzYO6uEolPuyNJVyNqL717F/uHvoFV.5QyRKi';
 const HASH_1234 = '$2b$10$esUnVUicJrDHZANds/A7J.eNbtiN55TjYmrdhvxkRJhP.m9qpE1du';
 
-const SCHEMAS = ['hub.sql', 'sales_core.sql', 'sdu.sql', 'mdu.sql'];
+const SCHEMAS = ['hub.sql', 'sales_core.sql', 'sdu.sql', 'mdu.sql', 'cases.sql'];
 
 async function runMigration() {
   console.log('=== Modulær Salgsløsning — Database Migration ===\n');
@@ -82,7 +82,7 @@ async function runMigration() {
   const result = await client.query(`
     SELECT schemaname, tablename
     FROM pg_tables
-    WHERE schemaname IN ('hub', 'sales_core', 'sdu', 'mdu')
+    WHERE schemaname IN ('hub', 'sales_core', 'sdu', 'mdu', 'cases')
     ORDER BY schemaname, tablename
   `);
 
