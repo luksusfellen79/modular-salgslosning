@@ -48,6 +48,7 @@ export async function findHubUserByName(name: string): Promise<(Omit<HubUser, 'p
     SELECT bruker_id, navn, epost, rolle_id, aktiv, opprettet, sist_innlogget, pin_hash
     FROM hub.brukere
     WHERE LOWER(navn) = LOWER($1)
+    ORDER BY opprettet ASC
     LIMIT 1
   `, [name.trim()]);
   if (!rows.length) return null;
@@ -84,6 +85,11 @@ export async function createHubUser(input: {
   await pool.query(`
     INSERT INTO hub.brukere (bruker_id, navn, epost, pin_hash, rolle_id, aktiv)
     VALUES ($1, $2, $3, $4, $5, $6)
+    ON CONFLICT (epost) DO UPDATE SET
+      navn = EXCLUDED.navn,
+      pin_hash = EXCLUDED.pin_hash,
+      rolle_id = EXCLUDED.rolle_id,
+      aktiv = EXCLUDED.aktiv
   `, [brukerId, input.name.trim(), input.email ?? null, pinHash, rolleId, input.isActive ?? true]);
 
   const user = await findHubUserById(brukerId);
@@ -159,23 +165,15 @@ export async function upsertHubUserSeed(input: {
 }): Promise<void> {
   const pool = getPool();
   const pinHash = await bcrypt.hash(input.pin, BCRYPT_ROUNDS);
-  try {
-    await pool.query(`
-      INSERT INTO hub.brukere (bruker_id, navn, epost, pin_hash, rolle_id, aktiv)
-      VALUES ($1, $2, $3, $4, $5, true)
-      ON CONFLICT (bruker_id) DO UPDATE SET
-        navn = EXCLUDED.navn,
-        epost = EXCLUDED.epost,
-        pin_hash = EXCLUDED.pin_hash,
-        rolle_id = EXCLUDED.rolle_id,
-        aktiv = true
-    `, [input.id, input.name, input.email, pinHash, input.rolleId]);
-  } catch {
-    await pool.query(`
-      UPDATE hub.brukere SET navn = $2, pin_hash = $3, rolle_id = $4, aktiv = true
-      WHERE epost = $1
-    `, [input.email, input.name, pinHash, input.rolleId]);
-  }
+  await pool.query(`
+    INSERT INTO hub.brukere (bruker_id, navn, epost, pin_hash, rolle_id, aktiv)
+    VALUES ($1, $2, $3, $4, $5, true)
+    ON CONFLICT (epost) DO UPDATE SET
+      navn = EXCLUDED.navn,
+      pin_hash = EXCLUDED.pin_hash,
+      rolle_id = EXCLUDED.rolle_id,
+      aktiv = true
+  `, [input.id, input.name, input.email, pinHash, input.rolleId]);
 }
 
 export { rolleIdToHubFields, roleToRolleId };

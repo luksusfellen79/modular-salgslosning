@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   login, fetchUsers, createUser, updateUser, deactivateUser, fetchStats,
-  HubUser, AppPermission, UserRole, SalesStats,
+  HubUser, AppPermission, UserRole, SalesStats, userHasAppPermission,
 } from './lib/api';
 import { saveSession, getSession, clearSession } from './lib/session';
 
@@ -231,7 +231,7 @@ function appUrl(baseUrl: string, user: HubUser): string {
 }
 
 function Dashboard({ user, stats, onAdmin, onLogout, onInsights, onNBA }: { user: HubUser; stats: SalesStats | null; onAdmin: () => void; onLogout: () => void; onInsights: () => void; onNBA: () => void }) {
-  const userCards = APP_CARDS.filter(c => user.permissions.includes(c.permission));
+  const userCards = APP_CARDS.filter(c => userHasAppPermission(user, c.permission));
 
   const statItems = [
     { label: 'Aktive MDU-muligheter', value: stats?.activeOpportunities ?? '–', color: BLUE },

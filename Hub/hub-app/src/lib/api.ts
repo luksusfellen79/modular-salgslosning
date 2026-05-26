@@ -35,6 +35,30 @@ export interface LoginResult extends HubUser {
   token: string;
 }
 
+const CASE_APP_ROLLE_IDS = new Set([
+  'superadmin',
+  'case-admin',
+  'kundeservice',
+  'teknisk-ordre',
+  'teknisk-aktivering',
+  'teknisk-fiber',
+  'teknisk-mobil',
+  'teknisk-faktura',
+]);
+
+/** Sjekk apptilgang — permissions eller rolleId (case-roller) */
+export function userHasAppPermission(user: HubUser, permission: AppPermission): boolean {
+  if (user.permissions.includes(permission)) return true;
+  if (permission === 'case_app') {
+    if (user.role === 'superadmin' || user.role === 'kundeservice' || user.role === 'case_admin' || user.role === 'case_teknisk') {
+      return true;
+    }
+    if (user.rolleId && CASE_APP_ROLLE_IDS.has(user.rolleId)) return true;
+    if (user.jwtRoles?.some((r) => CASE_APP_ROLLE_IDS.has(r))) return true;
+  }
+  return false;
+}
+
 export async function login(name: string, pin: string): Promise<LoginResult> {
   const res = await fetch(`${SALES_CORE}/api/auth/login`, {
     method: 'POST',

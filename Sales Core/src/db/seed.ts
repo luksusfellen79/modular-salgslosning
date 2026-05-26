@@ -104,12 +104,43 @@ const SDU_SELLER_IDS = [
   SEED_USER_IDS.per,
 ];
 
+const LEGACY_HUB_SQL_EMAILS = [
+  'jorn.haga@telenor.no',
+  'nina.lund@telenor.no',
+  'per.andersen@telenor.no',
+  'lise.berg@telenor.no',
+  'kristian.mo@telenor.no',
+];
+
+/** Fjern duplikater — behold eldste rad per unik epost */
+async function dedupeHubUsersByEmail(): Promise<void> {
+  const pool = getPool();
+  await pool.query(`
+    DELETE FROM hub.brukere
+    WHERE epost IS NOT NULL
+      AND bruker_id NOT IN (
+        SELECT DISTINCT ON (epost) bruker_id
+        FROM hub.brukere
+        WHERE epost IS NOT NULL
+        ORDER BY epost, opprettet ASC
+      )
+  `);
+}
+
 export async function ensurePostgresSeed(): Promise<void> {
   const pool = getPool();
   await pool.query('SELECT 1');
 
   // Fjern placeholder-brukere fra hub.sql hvis skjemaet er kjørt manuelt
   await pool.query(`DELETE FROM hub.brukere WHERE pin_hash LIKE 'PLACEHOLDER%'`);
+
+  // Fjern legacy hub.sql-rader som bruker andre e-poster enn seed
+  await pool.query(
+    `DELETE FROM hub.brukere WHERE epost = ANY($1::text[])`,
+    [LEGACY_HUB_SQL_EMAILS],
+  );
+
+  await dedupeHubUsersByEmail();
 
   await ensureHubRoles();
 
