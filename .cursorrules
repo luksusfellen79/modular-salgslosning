@@ -54,7 +54,7 @@ Nye moduler skal alltid hente fra Integration Layer, aldri direkte fra KAS Core.
 | SDU Incentive Manager| sdu-incentives-production.up.railway.app          | SDU bonuser/incentive-manager/ |
 | SDU Planner          | sdu-planner-production.up.railway.app             | SDU Planner/planner-app/       |
 | Case Service         | (under bygging)                                   | Case Service/                  |
-| Case App             | (under bygging)                                   | Case App/case-app/             |
+| Case App             | case-app-production.up.railway.app                | Case App/case-app/             |
 | PostgreSQL           | postgres.railway.internal:5432 (intern)           | —                              |
 
 Railway project ID: e779d578-b2fb-4875-89d6-e88049d9ecca
@@ -80,6 +80,9 @@ DATABASE_URL env-var satt på: salgshub, sales-core, case-service
 **Deploy:**
 - Railway med Nixpacks — bygger automatisk fra GitHub-repo `luksusfellen79/modular-salgslosning`
 - Én mappe per tjeneste = én Railway service
+- **Sales Core (unntak):** Root directory i Railway er satt til `/` (ikke `Sales Core`)
+- **Sales Core deploy:** Kjør `railway up` fra inne i `modular-salgslosning/Sales Core/`-mappen
+- **Sales Core GitHub-trigger:** Auto-deploy fra GitHub fungerer IKKE for Sales Core — manuell `railway up` kreves ved endringer
 
 ---
 
@@ -287,6 +290,19 @@ Token-payload (Azure AD-kompatibel):
 Env-var: `JWT_SECRET` — bytt alltid ut dev-secret i prod.
 
 Session distribueres via `?hub_session=` URL-parameter fra Hub til alle micro-apps.
+
+---
+
+## Hub og Sales Core — roller og tilganger
+
+- Apptilganger er read-only og beregnes automatisk fra `rolleId` — ikke separate permission-haker
+- `rolePermissionsToRolleId()` i Hub (`Hub/hub-app/src/lib/api.ts`) oversetter valgt rolle til korrekt `rolleId`
+- `KNOWN_HUB_ROLLE_IDS` i Sales Core (`Sales Core/src/db/mappers.ts`) er masterkilden for gyldige roller:
+  `sdu-selger`, `sdu-leder`, `mdu-selger`, `mdu-leder`, `kundeservice`, `case-admin`,
+  `teknisk-ordre`, `teknisk-aktivering`, `teknisk-fiber`, `teknisk-mobil`, `teknisk-faktura`, `superadmin`
+- `normalizeHubUser()` kjøres ved innlogging, i `getSession()`/`saveSession()` og i `appUrl()` —
+  `inferRolleId()` utleder riktig rolle fra e-post/navn hvis DB-verdien er utdatert
+- PATCH til Sales Core sender kun `{ name, email, rolleId, pin? }` — ikke `role`/`permissions`
 
 ---
 
