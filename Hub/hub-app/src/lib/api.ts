@@ -37,6 +37,7 @@ export interface LoginResult extends HubUser {
 
 const CASE_APP_ROLLE_IDS = new Set([
   'superadmin',
+  'admin',
   'case-admin',
   'kundeservice',
   'teknisk-ordre',
@@ -46,16 +47,85 @@ const CASE_APP_ROLLE_IDS = new Set([
   'teknisk-faktura',
 ]);
 
-/** Sjekk apptilgang — permissions eller rolleId (case-roller) */
+function roleFromRolleId(rolleId: string): UserRole {
+  if (rolleId === 'superadmin' || rolleId === 'admin') return 'superadmin';
+  if (rolleId === 'kundeservice') return 'kundeservice';
+  if (rolleId === 'case-admin') return 'case_admin';
+  if (rolleId.startsWith('teknisk-')) return 'case_teknisk';
+  if (rolleId === 'mdu-leder' || rolleId === 'sdu-leder') return 'salgsleder';
+  if (rolleId === 'mdu-selger') return 'selger_mdu';
+  return 'selger_sdu';
+}
+
+function inferRolleId(user: Partial<HubUser>): string | undefined {
+  if (user.rolleId && CASE_APP_ROLLE_IDS.has(user.rolleId)) return user.rolleId;
+  if (user.rolleId === 'superadmin' || user.rolleId === 'mdu-leder' || user.rolleId === 'sdu-leder'
+    || user.rolleId === 'mdu-selger' || user.rolleId === 'sdu-selger') {
+    return user.rolleId;
+  }
+
+  const role = user.role;
+  if (role === 'superadmin') return 'superadmin';
+  if (role === 'kundeservice') return 'kundeservice';
+  if (role === 'case_admin') return 'case-admin';
+  if (role === 'case_teknisk') {
+    const teknisk = user.jwtRoles?.find((r) => r.startsWith('teknisk-'));
+    if (teknisk) return teknisk;
+  }
+
+  if (user.jwtRoles?.includes('superadmin') || user.jwtRoles?.includes('admin')) return 'superadmin';
+  if (user.jwtRoles?.includes('case-admin')) return 'case-admin';
+  if (user.jwtRoles?.includes('kundeservice')) return 'kundeservice';
+  const teknisk = user.jwtRoles?.find((r) => r.startsWith('teknisk-'));
+  if (teknisk) return teknisk;
+
+  const email = user.email?.toLowerCase() ?? '';
+  if (email.includes('kundeservice')) return 'kundeservice';
+  if (email.includes('tom.fiber')) return 'teknisk-fiber';
+
+  const name = user.name?.toLowerCase() ?? '';
+  if (name.includes('kundeservice')) return 'kundeservice';
+
+  return user.rolleId;
+}
+
+/** Normaliser bruker fra login/API — fyll inn rolleId og permissions for eldre API-responser */
+export function normalizeHubUser(user: LoginResult | HubUser): HubUser {
+  const rolleId = inferRolleId(user) ?? user.rolleId ?? 'sdu-selger';
+  const jwtRoles = user.jwtRoles?.length ? user.jwtRoles : [rolleId];
+
+  let permissions = user.permissions ?? [];
+  if (CASE_APP_ROLLE_IDS.has(rolleId) && !permissions.includes('case_app')) {
+    permissions = [...permissions, 'case_app'];
+  }
+  if (rolleId === 'superadmin' || rolleId === 'admin') {
+    permissions = [
+      'mdu_crm', 'mdu_leder', 'sdu_crm', 'sdu_planner', 'sdu_incentives', 'case_app',
+    ];
+  }
+
+  return {
+    ...user,
+    rolleId,
+    jwtRoles,
+    permissions,
+    role: user.role ?? roleFromRolleId(rolleId),
+  };
+}
+
+/** Sjekk apptilgang — permissions, rolleId, jwtRoles eller role-felt */
 export function userHasAppPermission(user: HubUser, permission: AppPermission): boolean {
-  if (user.permissions.includes(permission)) return true;
+  const normalized = normalizeHubUser(user);
+  if (normalized.permissions.includes(permission)) return true;
+
   if (permission === 'case_app') {
-    if (user.role === 'superadmin' || user.role === 'kundeservice' || user.role === 'case_admin' || user.role === 'case_teknisk') {
+    if (CASE_APP_ROLLE_IDS.has(normalized.rolleId)) return true;
+    if (normalized.jwtRoles.some((r) => CASE_APP_ROLLE_IDS.has(r))) return true;
+    if (['superadmin', 'kundeservice', 'case_admin', 'case_teknisk'].includes(normalized.role)) {
       return true;
     }
-    if (user.rolleId && CASE_APP_ROLLE_IDS.has(user.rolleId)) return true;
-    if (user.jwtRoles?.some((r) => CASE_APP_ROLLE_IDS.has(r))) return true;
   }
+
   return false;
 }
 
@@ -69,7 +139,8 @@ export async function login(name: string, pin: string): Promise<LoginResult> {
     const err = await res.json().catch(() => ({})) as { error?: string };
     throw new Error(err.error ?? 'Innlogging feilet');
   }
-  return res.json() as Promise<LoginResult>;
+  const result = await res.json() as LoginResult;
+  return { ...normalizeHubUser(result), token: result.token };
 }
 
 export async function fetchUsers(): Promise<HubUser[]> {

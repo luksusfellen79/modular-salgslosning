@@ -1,15 +1,21 @@
 import { useNavigate } from 'react-router-dom';
 import { TelenorLogo } from '../components/TelenorLogo';
 import { saveAppContext, getHubSession } from '../lib/session';
-import { allowedTekniskGroups, canPickAnyCaseRole } from '../lib/roles';
+import {
+  allowedTekniskGroups,
+  canPickAnyCaseRole,
+  getEffectiveRolleId,
+  hasCaseAppAccess,
+} from '../lib/roles';
 import { TEKNISKE_GRUPPER, TekniskGruppe } from '../lib/types';
 
 export function RolePickerView() {
   const navigate = useNavigate();
   const hub = getHubSession();
-  const showKundeservice = canPickAnyCaseRole(hub?.rolleId, hub?.jwtRoles)
-    || hub?.rolleId === 'kundeservice';
-  const tekniskGroups = allowedTekniskGroups(hub?.rolleId, hub?.jwtRoles);
+  const rolleId = getEffectiveRolleId(hub);
+
+  const showKundeservice = canPickAnyCaseRole(hub) || rolleId === 'kundeservice';
+  const tekniskGroups = allowedTekniskGroups(hub);
   const visibleTeknisk = tekniskGroups === 'all'
     ? TEKNISKE_GRUPPER
     : TEKNISKE_GRUPPER.filter((g) => tekniskGroups.includes(g.id));
@@ -24,6 +30,14 @@ export function RolePickerView() {
     navigate('/teknisk');
   };
 
+  if (hub && !hasCaseAppAccess(hub)) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-telenor-blue-dark via-telenor-blue to-telenor-teal flex items-center justify-center px-5">
+        <p className="text-white/80 text-sm">Ingen Case-tilgang for denne brukeren.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-telenor-blue-dark via-telenor-blue to-telenor-teal flex flex-col items-center justify-center px-5">
       <div className="mb-10 text-center">
@@ -33,7 +47,7 @@ export function RolePickerView() {
         </div>
         <h1 className="text-3xl font-bold text-white mb-1">Saksbehandling</h1>
         <p className="text-sm text-white/60">
-          {hub ? `Innlogget som ${hub.name}${hub.rolleId ? ` (${hub.rolleId})` : ''}` : 'Velg arbeidsflate'}
+          {hub ? `Innlogget som ${hub.name}${rolleId ? ` (${rolleId})` : ''}` : 'Velg arbeidsflate'}
         </p>
       </div>
 

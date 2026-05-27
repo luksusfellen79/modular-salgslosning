@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   login, fetchUsers, createUser, updateUser, deactivateUser, fetchStats,
-  HubUser, AppPermission, UserRole, SalesStats, userHasAppPermission,
+  HubUser, AppPermission, UserRole, SalesStats, userHasAppPermission, normalizeHubUser,
 } from './lib/api';
 import { saveSession, getSession, clearSession } from './lib/session';
 
@@ -226,7 +226,8 @@ function LoginPage({ onLogin }: { onLogin: (user: HubUser) => void }) {
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 function appUrl(baseUrl: string, user: HubUser): string {
-  const token = encodeURIComponent(JSON.stringify(user));
+  const normalized = normalizeHubUser(user);
+  const token = encodeURIComponent(JSON.stringify(normalized));
   return `${baseUrl}?hub_session=${token}`;
 }
 
