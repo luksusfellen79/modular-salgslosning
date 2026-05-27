@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   login, fetchUsers, createUser, updateUser, deactivateUser, fetchStats,
   HubUser, AppPermission, UserRole, SalesStats, userHasAppPermission, normalizeHubUser,
+  rolePermissionsToRolleId,
 } from './lib/api';
 import { saveSession, getSession, clearSession } from './lib/session';
 
@@ -429,29 +430,34 @@ function AdminPanel({ currentUser, onBack }: { currentUser: HubUser; onBack: () 
           <div style={{ textAlign: 'center', padding: 48, color: GRAY400 }}>Laster…</div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {users.map(u => (
+            {users.map(u => {
+              const display = normalizeHubUser(u);
+              return (
               <div key={u.id} style={{ background: 'white', border: `1px solid ${GRAY200}`, borderRadius: 14, padding: '16px 20px', opacity: u.isActive ? 1 : 0.55 }}>
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
                   {/* Avatar */}
-                  <div style={{ width: 42, height: 42, borderRadius: '50%', background: u.role === 'superadmin' ? BLUE : u.role === 'salgsleder' ? TEAL : GRAY200, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, color: ['superadmin','salgsleder'].includes(u.role) ? 'white' : SLATE, flexShrink: 0 }}>
+                  <div style={{ width: 42, height: 42, borderRadius: '50%', background: display.role === 'superadmin' ? BLUE : display.role === 'salgsleder' ? TEAL : GRAY200, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, color: ['superadmin','salgsleder'].includes(display.role) ? 'white' : SLATE, flexShrink: 0 }}>
                     {u.name.split(' ').map(w => w[0]).join('').slice(0, 2)}
                   </div>
 
                   <div style={{ flex: 1 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       <span style={{ fontSize: 15, fontWeight: 700, color: SLATE }}>{u.name}</span>
-                      <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 99, background: u.role === 'superadmin' ? '#EEF2FF' : GRAY100, color: u.role === 'superadmin' ? '#4338CA' : GRAY600 }}>
-                        {ROLE_LABELS[u.role]}
+                      <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 99, background: display.role === 'superadmin' ? '#EEF2FF' : GRAY100, color: display.role === 'superadmin' ? '#4338CA' : GRAY600 }}>
+                        {ROLE_LABELS[display.role]}
                       </span>
                       {!u.isActive && <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 99, background: '#FEE2E2', color: '#DC2626', fontWeight: 600 }}>Inaktiv</span>}
                     </div>
                     <div style={{ fontSize: 12, color: GRAY400, marginTop: 3 }}>{u.email}</div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
                       {(Object.keys(PERMISSION_LABELS) as AppPermission[]).map(p => (
-                        <span key={p} style={{ fontSize: 11, padding: '3px 9px', borderRadius: 99, background: u.permissions.includes(p) ? '#DCFCE7' : GRAY100, color: u.permissions.includes(p) ? '#15803D' : GRAY400, fontWeight: 600 }}>
-                          {u.permissions.includes(p) ? '✓' : '–'} {PERMISSION_LABELS[p]}
+                        <span key={p} style={{ fontSize: 11, padding: '3px 9px', borderRadius: 99, background: userHasAppPermission(u, p) ? '#DCFCE7' : GRAY100, color: userHasAppPermission(u, p) ? '#15803D' : GRAY400, fontWeight: 600 }}>
+                          {userHasAppPermission(u, p) ? '✓' : '–'} {PERMISSION_LABELS[p]}
                         </span>
                       ))}
+                    </div>
+                    <div style={{ fontSize: 11, color: GRAY400, marginTop: 4 }}>
+                      Rolle-ID: {display.rolleId}
                     </div>
                     <div style={{ fontSize: 11, color: GRAY400, marginTop: 6 }}>
                       Sist innlogget: {formatDate(u.lastLoginAt)}
@@ -478,7 +484,7 @@ function AdminPanel({ currentUser, onBack }: { currentUser: HubUser; onBack: () 
                   </div>
                 </div>
               </div>
-            ))}
+            );})}
           </div>
         )}
       </main>
@@ -515,11 +521,12 @@ function UserModal({ mode, userId, initialData, currentUserId, onClose, onSaved 
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [name, setName] = useState(initialData?.name ?? '');
-  const [email, setEmail] = useState(initialData?.email ?? '');
+  const base = initialData ? normalizeHubUser(initialData) : undefined;
+  const [name, setName] = useState(base?.name ?? '');
+  const [email, setEmail] = useState(base?.email ?? '');
   const [pin, setPin] = useState('');
-  const [role, setRole] = useState<UserRole>(initialData?.role ?? 'selger_sdu');
-  const [permissions, setPermissions] = useState<AppPermission[]>(initialData?.permissions ?? []);
+  const [role, setRole] = useState<UserRole>(base?.role ?? 'selger_sdu');
+  const [permissions, setPermissions] = useState<AppPermission[]>(base?.permissions ?? []);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -530,11 +537,12 @@ function UserModal({ mode, userId, initialData, currentUserId, onClose, onSaved 
     setSaving(true);
     setError('');
     try {
+      const rolleId = rolePermissionsToRolleId(role, permissions, base?.rolleId);
       if (mode === 'create') {
         if (!name || !email || !pin || pin.length !== 4) { setError('Alle felt må fylles ut, PIN må være 4 siffer'); setSaving(false); return; }
-        await createUser({ name, email, pin, role, permissions, createdBy: currentUserId });
+        await createUser({ name, email, pin, role, permissions, rolleId, createdBy: currentUserId });
       } else if (userId) {
-        const data: Parameters<typeof updateUser>[1] = { name, email, role, permissions };
+        const data: Parameters<typeof updateUser>[1] = { name, email, role, permissions, rolleId };
         if (pin.length === 4) data.pin = pin;
         await updateUser(userId, data);
       }

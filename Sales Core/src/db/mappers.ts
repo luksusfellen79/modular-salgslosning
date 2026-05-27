@@ -63,14 +63,22 @@ export function rolleIdToJwtRoles(rolleId: string): string[] {
   return [rolleId];
 }
 
-export function roleToRolleId(role: UserRole, permissions?: AppPermission[]): string {
+export function roleToRolleId(role: UserRole, permissions?: AppPermission[], existingRolleId?: string): string {
   if (role === 'superadmin') return 'superadmin';
   if (role === 'kundeservice') return 'kundeservice';
   if (role === 'case_admin') return 'case-admin';
+  if (role === 'case_teknisk') {
+    if (existingRolleId && isTekniskRolleId(existingRolleId)) return existingRolleId;
+    return 'teknisk-fiber';
+  }
   if (role === 'selger_mdu') return 'mdu-selger';
   if (role === 'selger_sdu') return 'sdu-selger';
+  if (role === 'salgsleder') {
+    if (permissions?.includes('mdu_leder')) return 'mdu-leder';
+    return 'sdu-leder';
+  }
   if (permissions?.includes('mdu_leder')) return 'mdu-leder';
-  return 'sdu-leder';
+  return 'sdu-selger';
 }
 
 export function rolleIdToHubFields(rolleId: string): { role: UserRole; permissions: AppPermission[] } {

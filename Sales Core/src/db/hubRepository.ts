@@ -99,7 +99,7 @@ export async function createHubUser(input: {
 
 export async function updateHubUser(
   id: string,
-  patch: Partial<Pick<HubUser, 'name' | 'email' | 'role' | 'permissions' | 'isActive'>> & { pin?: string },
+  patch: Partial<Pick<HubUser, 'name' | 'email' | 'role' | 'permissions' | 'isActive' | 'rolleId'>> & { pin?: string },
 ): Promise<Omit<HubUser, 'pin'> | null> {
   const pool = getPool();
   const existing = await findHubUserById(id);
@@ -108,27 +108,22 @@ export async function updateHubUser(
   const name = patch.name ?? existing.name;
   const email = patch.email ?? existing.email;
   const isActive = patch.isActive ?? existing.isActive;
-  const rolleId = patch.role
-    ? roleToRolleId(patch.role, patch.permissions ?? existing.permissions)
-    : undefined;
+  const role = (patch.role ?? existing.role) as UserRole;
+  const permissions = patch.permissions ?? existing.permissions;
+  const rolleId = patch.rolleId
+    ?? roleToRolleId(role, permissions, existing.rolleId);
 
   if (patch.pin) {
     const pinHash = await bcrypt.hash(patch.pin, BCRYPT_ROUNDS);
     await pool.query(`
       UPDATE hub.brukere
-      SET navn = $2, epost = $3, aktiv = $4, pin_hash = $5${rolleId ? ', rolle_id = $6' : ''}
+      SET navn = $2, epost = $3, aktiv = $4, pin_hash = $5, rolle_id = $6
       WHERE bruker_id = $1
-    `, rolleId
-      ? [id, name, email || null, isActive, pinHash, rolleId]
-      : [id, name, email || null, isActive, pinHash]);
-  } else if (rolleId) {
+    `, [id, name, email || null, isActive, pinHash, rolleId]);
+  } else {
     await pool.query(`
       UPDATE hub.brukere SET navn = $2, epost = $3, aktiv = $4, rolle_id = $5 WHERE bruker_id = $1
     `, [id, name, email || null, isActive, rolleId]);
-  } else {
-    await pool.query(`
-      UPDATE hub.brukere SET navn = $2, epost = $3, aktiv = $4 WHERE bruker_id = $1
-    `, [id, name, email || null, isActive]);
   }
 
   return findHubUserById(id);

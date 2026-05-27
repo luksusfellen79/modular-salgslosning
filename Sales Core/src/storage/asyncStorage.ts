@@ -178,7 +178,15 @@ export async function updateUser(id: string, patch: Partial<HubUser>): Promise<O
   const all = readUsersJson();
   const existing = all.find((u) => u.id === id);
   if (!existing) return null;
-  const updated = { ...existing, ...patch };
+  const role = (patch.role ?? existing.role);
+  const permissions = patch.permissions ?? existing.permissions;
+  const rolleId = patch.rolleId ?? roleToRolleId(role, permissions, existing.rolleId);
+  const updated = {
+    ...existing,
+    ...patch,
+    rolleId,
+    jwtRoles: rolleIdToJwtRoles(rolleId),
+  };
   writeUsersJson(all.map((u) => (u.id === id ? updated : u)));
   const { pin: _pin, ...safe } = updated;
   return safe;

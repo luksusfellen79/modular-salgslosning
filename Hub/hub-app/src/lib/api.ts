@@ -47,6 +47,22 @@ const CASE_APP_ROLLE_IDS = new Set([
   'teknisk-faktura',
 ]);
 
+const ALL_PERMISSIONS: AppPermission[] = [
+  'mdu_crm', 'mdu_leder', 'sdu_crm', 'sdu_planner', 'sdu_incentives', 'case_app',
+];
+
+function permissionsFromRolleId(rolleId: string): AppPermission[] {
+  if (rolleId === 'superadmin' || rolleId === 'admin') return ALL_PERMISSIONS;
+  if (rolleId === 'mdu-leder') return ['mdu_crm', 'mdu_leder'];
+  if (rolleId === 'sdu-leder') return ['sdu_planner', 'sdu_incentives', 'sdu_crm'];
+  if (rolleId === 'mdu-selger') return ['mdu_crm'];
+  if (rolleId === 'sdu-selger') return ['sdu_crm'];
+  if (rolleId === 'kundeservice' || rolleId === 'case-admin' || rolleId.startsWith('teknisk-')) {
+    return ['case_app'];
+  }
+  return ['sdu_crm'];
+}
+
 function roleFromRolleId(rolleId: string): UserRole {
   if (rolleId === 'superadmin' || rolleId === 'admin') return 'superadmin';
   if (rolleId === 'kundeservice') return 'kundeservice';
@@ -58,12 +74,6 @@ function roleFromRolleId(rolleId: string): UserRole {
 }
 
 function inferRolleId(user: Partial<HubUser>): string | undefined {
-  if (user.rolleId && CASE_APP_ROLLE_IDS.has(user.rolleId)) return user.rolleId;
-  if (user.rolleId === 'superadmin' || user.rolleId === 'mdu-leder' || user.rolleId === 'sdu-leder'
-    || user.rolleId === 'mdu-selger' || user.rolleId === 'sdu-selger') {
-    return user.rolleId;
-  }
-
   const role = user.role;
   if (role === 'superadmin') return 'superadmin';
   if (role === 'kundeservice') return 'kundeservice';
@@ -86,30 +96,46 @@ function inferRolleId(user: Partial<HubUser>): string | undefined {
   const name = user.name?.toLowerCase() ?? '';
   if (name.includes('kundeservice')) return 'kundeservice';
 
-  return user.rolleId;
+  if (user.rolleId && CASE_APP_ROLLE_IDS.has(user.rolleId)) return user.rolleId;
+  if (user.rolleId) return user.rolleId;
+
+  return undefined;
+}
+
+/** Map Hub admin-felter → hub.rolle_id for lagring i Sales Core */
+export function rolePermissionsToRolleId(
+  role: UserRole,
+  permissions: AppPermission[],
+  existingRolleId?: string,
+): string {
+  if (role === 'superadmin') return 'superadmin';
+  if (role === 'kundeservice') return 'kundeservice';
+  if (role === 'case_admin') return 'case-admin';
+  if (role === 'case_teknisk') {
+    if (existingRolleId?.startsWith('teknisk-')) return existingRolleId;
+    return 'teknisk-fiber';
+  }
+  if (role === 'selger_mdu') return 'mdu-selger';
+  if (role === 'selger_sdu') return 'sdu-selger';
+  if (role === 'salgsleder') {
+    if (permissions.includes('mdu_leder')) return 'mdu-leder';
+    return 'sdu-leder';
+  }
+  return 'sdu-selger';
 }
 
 /** Normaliser bruker fra login/API — fyll inn rolleId og permissions for eldre API-responser */
 export function normalizeHubUser(user: LoginResult | HubUser): HubUser {
   const rolleId = inferRolleId(user) ?? user.rolleId ?? 'sdu-selger';
   const jwtRoles = user.jwtRoles?.length ? user.jwtRoles : [rolleId];
-
-  let permissions = user.permissions ?? [];
-  if (CASE_APP_ROLLE_IDS.has(rolleId) && !permissions.includes('case_app')) {
-    permissions = [...permissions, 'case_app'];
-  }
-  if (rolleId === 'superadmin' || rolleId === 'admin') {
-    permissions = [
-      'mdu_crm', 'mdu_leder', 'sdu_crm', 'sdu_planner', 'sdu_incentives', 'case_app',
-    ];
-  }
+  const permissions = permissionsFromRolleId(rolleId);
 
   return {
     ...user,
     rolleId,
     jwtRoles,
     permissions,
-    role: user.role ?? roleFromRolleId(rolleId),
+    role: roleFromRolleId(rolleId),
   };
 }
 
@@ -146,33 +172,42 @@ export async function login(name: string, pin: string): Promise<LoginResult> {
 export async function fetchUsers(): Promise<HubUser[]> {
   const res = await fetch(`${SALES_CORE}/api/auth/users`);
   if (!res.ok) throw new Error('Kunne ikke hente brukere');
-  return res.json() as Promise<HubUser[]>;
+  const users = await res.json() as HubUser[];
+  return users.map(normalizeHubUser);
 }
 
 export async function createUser(data: {
   name: string; email: string; pin: string;
   role: UserRole; permissions: AppPermission[]; createdBy: string;
+  rolleId?: string;
 }): Promise<HubUser> {
+  const rolleId = data.rolleId ?? rolePermissionsToRolleId(data.role, data.permissions);
   const res = await fetch(`${SALES_CORE}/api/auth/users`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
+    body: JSON.stringify({ ...data, rolleId }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({})) as { error?: string };
     throw new Error(err.error ?? 'Kunne ikke opprette bruker');
   }
-  return res.json() as Promise<HubUser>;
+  const user = await res.json() as HubUser;
+  return normalizeHubUser(user);
 }
 
 export async function updateUser(id: string, data: Partial<Omit<HubUser, 'id'> & { pin: string }>): Promise<HubUser> {
-  const res = await fetch(`${SALES_CORE}/api/auth/users/${id}`, {
+  const res = await fetch(`${SALES_CORE}/api/auth/users/${encodeURIComponent(id)}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error('Kunne ikke oppdatere bruker');
-  return res.json() as Promise<HubUser>;
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { error?: string };
+    throw new Error(err.error ?? 'Kunne ikke oppdatere bruker');
+  }
+  const user = await res.json() as HubUser | null;
+  if (!user?.id) throw new Error('Kunne ikke oppdatere bruker');
+  return normalizeHubUser(user);
 }
 
 export async function deactivateUser(id: string): Promise<void> {
