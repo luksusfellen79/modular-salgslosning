@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   login, fetchUsers, createUser, updateUser, deactivateUser, fetchStats,
   HubUser, AppPermission, UserRole, SalesStats, userHasAppPermission, normalizeHubUser,
-  rolePermissionsToRolleId,
+  HUB_ROLLE_OPTIONS, rolleIdLabel, permissionsFromRolleId,
 } from './lib/api';
 import { saveSession, getSession, clearSession } from './lib/session';
 
@@ -444,7 +444,7 @@ function AdminPanel({ currentUser, onBack }: { currentUser: HubUser; onBack: () 
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       <span style={{ fontSize: 15, fontWeight: 700, color: SLATE }}>{u.name}</span>
                       <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 99, background: display.role === 'superadmin' ? '#EEF2FF' : GRAY100, color: display.role === 'superadmin' ? '#4338CA' : GRAY600 }}>
-                        {ROLE_LABELS[display.role]}
+                        {rolleIdLabel(display.rolleId)}
                       </span>
                       {!u.isActive && <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 99, background: '#FEE2E2', color: '#DC2626', fontWeight: 600 }}>Inaktiv</span>}
                     </div>
@@ -500,6 +500,7 @@ function AdminPanel({ currentUser, onBack }: { currentUser: HubUser; onBack: () 
 
       {editId && (
         <UserModal
+          key={editId}
           mode="edit"
           userId={editId}
           initialData={users.find(u => u.id === editId)}
@@ -521,28 +522,31 @@ function UserModal({ mode, userId, initialData, currentUserId, onClose, onSaved 
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const base = initialData ? normalizeHubUser(initialData) : undefined;
+  const base = initialData ? normalizeHubUser(initialData, false) : undefined;
   const [name, setName] = useState(base?.name ?? '');
   const [email, setEmail] = useState(base?.email ?? '');
   const [pin, setPin] = useState('');
-  const [role, setRole] = useState<UserRole>(base?.role ?? 'selger_sdu');
-  const [permissions, setPermissions] = useState<AppPermission[]>(base?.permissions ?? []);
+  const [rolleId, setRolleId] = useState(base?.rolleId ?? 'sdu-selger');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  const togglePerm = (p: AppPermission) =>
-    setPermissions(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]);
+  const effectivePermissions = permissionsFromRolleId(rolleId);
 
   const handleSave = async () => {
     setSaving(true);
     setError('');
     try {
-      const rolleId = rolePermissionsToRolleId(role, permissions, base?.rolleId);
       if (mode === 'create') {
-        if (!name || !email || !pin || pin.length !== 4) { setError('Alle felt må fylles ut, PIN må være 4 siffer'); setSaving(false); return; }
-        await createUser({ name, email, pin, role, permissions, rolleId, createdBy: currentUserId });
+        if (!name || !email || !pin || pin.length !== 4) {
+          setError('Alle felt må fylles ut, PIN må være 4 siffer');
+          setSaving(false);
+          return;
+        }
+        await createUser({
+          name, email, pin, rolleId, createdBy: currentUserId,
+        });
       } else if (userId) {
-        const data: Parameters<typeof updateUser>[1] = { name, email, role, permissions, rolleId };
+        const data: Parameters<typeof updateUser>[1] = { name, email, rolleId };
         if (pin.length === 4) data.pin = pin;
         await updateUser(userId, data);
       }
@@ -582,22 +586,26 @@ function UserModal({ mode, userId, initialData, currentUserId, onClose, onSaved 
 
           <div>
             <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: GRAY600, marginBottom: 6 }}>Rolle</label>
-            <select value={role} onChange={e => setRole(e.target.value as UserRole)}
-              style={{ width: '100%', padding: '10px 12px', border: `1px solid ${GRAY200}`, borderRadius: 8, fontSize: 14, boxSizing: 'border-box' }}>
-              {(Object.entries(ROLE_LABELS) as [UserRole, string][]).map(([r, l]) => (
-                <option key={r} value={r}>{l}</option>
+            <select
+              value={rolleId}
+              onChange={e => setRolleId(e.target.value)}
+              style={{ width: '100%', padding: '10px 12px', border: `1px solid ${GRAY200}`, borderRadius: 8, fontSize: 14, boxSizing: 'border-box' }}
+            >
+              {HUB_ROLLE_OPTIONS.map(({ id, label }) => (
+                <option key={id} value={id}>{label}</option>
               ))}
             </select>
           </div>
 
           <div>
-            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: GRAY600, marginBottom: 8 }}>Apptilganger</label>
+            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: GRAY600, marginBottom: 8 }}>Apptilganger (fra rolle)</label>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {(Object.entries(PERMISSION_LABELS) as [AppPermission, string][]).map(([p, l]) => (
-                <label key={p} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '10px 12px', borderRadius: 8, background: permissions.includes(p) ? '#EFF8FF' : GRAY50, border: `1px solid ${permissions.includes(p) ? '#0085C3' : GRAY200}` }}>
-                  <input type="checkbox" checked={permissions.includes(p)} onChange={() => togglePerm(p)} style={{ accentColor: BLUE }} />
-                  <span style={{ fontSize: 14, color: SLATE, fontWeight: 500 }}>{l}</span>
-                </label>
+                <div key={p} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 8, background: effectivePermissions.includes(p) ? '#EFF8FF' : GRAY50, border: `1px solid ${effectivePermissions.includes(p) ? '#0085C3' : GRAY200}` }}>
+                  <span style={{ fontSize: 14, color: SLATE, fontWeight: 500 }}>
+                    {effectivePermissions.includes(p) ? '✓' : '–'} {l}
+                  </span>
+                </div>
               ))}
             </div>
           </div>

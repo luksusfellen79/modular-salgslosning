@@ -755,6 +755,9 @@ router.post('/api/auth/users', async (req: Request, res: Response) => {
 
   const rolleId = body.rolleId
     ?? roleToRolleId(body.role as UserRole, (body.permissions ?? []) as AppPermission[]);
+  if (!rolleId) {
+    return res.status(400).json({ error: 'rolleId er påkrevd' });
+  }
   const newUser: HubUser = {
     id: `usr-${uuid()}`,
     name: body.name,
@@ -782,7 +785,13 @@ router.patch('/api/auth/users/:id', async (req: Request, res: Response) => {
   }
 
   const body = req.body as Partial<Omit<HubUser, 'id' | 'createdAt' | 'createdBy'>>;
-  const safeUser = await updateUser(req.params.id, body);
+  let safeUser: Awaited<ReturnType<typeof updateUser>>;
+  try {
+    safeUser = await updateUser(req.params.id, body);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Kunne ikke oppdatere bruker';
+    return res.status(400).json({ error: message });
+  }
   if (!safeUser) {
     return res.status(500).json({ error: 'Kunne ikke oppdatere bruker' });
   }

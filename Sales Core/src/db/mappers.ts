@@ -38,6 +38,19 @@ export const CASE_ROLLE_IDS = [
   'case-admin',
 ] as const;
 
+export const KNOWN_HUB_ROLLE_IDS = new Set([
+  'superadmin',
+  'mdu-leder',
+  'sdu-leder',
+  'mdu-selger',
+  'sdu-selger',
+  ...CASE_ROLLE_IDS,
+]);
+
+export function isKnownHubRolleId(rolleId: string): boolean {
+  return KNOWN_HUB_ROLLE_IDS.has(rolleId);
+}
+
 export type CaseRolleId = typeof CASE_ROLLE_IDS[number];
 
 const ALL_PERMISSIONS: AppPermission[] = [
@@ -78,6 +91,7 @@ export function roleToRolleId(role: UserRole, permissions?: AppPermission[], exi
     return 'sdu-leder';
   }
   if (permissions?.includes('mdu_leder')) return 'mdu-leder';
+  if (existingRolleId && isKnownHubRolleId(existingRolleId)) return existingRolleId;
   return 'sdu-selger';
 }
 

@@ -4,6 +4,7 @@ import { randomUUID } from 'crypto';
 import { getPool } from './pool';
 import {
   brukerRowToHubUser,
+  isKnownHubRolleId,
   roleToRolleId,
   rolleIdToHubFields,
 } from './mappers';
@@ -108,10 +109,18 @@ export async function updateHubUser(
   const name = patch.name ?? existing.name;
   const email = patch.email ?? existing.email;
   const isActive = patch.isActive ?? existing.isActive;
-  const role = (patch.role ?? existing.role) as UserRole;
-  const permissions = patch.permissions ?? existing.permissions;
-  const rolleId = patch.rolleId
-    ?? roleToRolleId(role, permissions, existing.rolleId);
+
+  let rolleId = existing.rolleId;
+  if (patch.rolleId !== undefined) {
+    if (!isKnownHubRolleId(patch.rolleId)) {
+      throw new Error(`Ugyldig rolleId: ${patch.rolleId}`);
+    }
+    rolleId = patch.rolleId;
+  } else if (patch.role !== undefined || patch.permissions !== undefined) {
+    const role = (patch.role ?? existing.role) as UserRole;
+    const permissions = patch.permissions ?? existing.permissions;
+    rolleId = roleToRolleId(role, permissions, existing.rolleId);
+  }
 
   if (patch.pin) {
     const pinHash = await bcrypt.hash(patch.pin, BCRYPT_ROUNDS);
