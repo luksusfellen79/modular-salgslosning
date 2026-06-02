@@ -25,7 +25,7 @@ interface RundeRow {
 }
 
 interface BesokRow {
-  besok_id: string;
+  besøk_id: string;
   runde_id: string;
   leilighet_id: string;
   utfall: string;
@@ -77,7 +77,7 @@ async function fetchBesokForRunder(rundeIds: string[]): Promise<Map<string, Beso
 
   const pool = getPool();
   const { rows } = await pool.query(`
-    SELECT besok_id, runde_id, leilighet_id, utfall, notater, tidspunkt
+    SELECT besøk_id, runde_id, leilighet_id, utfall, notater, tidspunkt
     FROM sales_core.sdu_besøk
     WHERE runde_id = ANY($1::uuid[])
     ORDER BY leilighet_id
