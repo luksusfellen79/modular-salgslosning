@@ -8,7 +8,8 @@
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
     "typecheck": "tsc --noEmit",
-    "test": "jest --forceExit"
+    "test": "jest --forceExit",
+    "seed:demo": "node database/seeds/demo-workshop.mjs"
   },
   "dependencies": {
     "cors": "^2.8.5",
@@ -35,8 +36,12 @@
   "jest": {
     "preset": "ts-jest",
     "testEnvironment": "node",
-    "testMatch": ["**/tests/**/*.test.ts"],
-    "setupFiles": ["<rootDir>/tests/jest.setup.ts"],
+    "testMatch": [
+      "**/tests/**/*.test.ts"
+    ],
+    "setupFiles": [
+      "<rootDir>/tests/jest.setup.ts"
+    ],
     "moduleNameMapper": {
       "^@/(.*)$": "<rootDir>/src/$1",
       "^(\\.{1,2}/.*)\\.js$": "$1"
