@@ -70,13 +70,50 @@ const HUB_USERS = [
 
 const SDU_SELLER_IDS = [DEMO.users.lars, DEMO.users.marte];
 
-function majorstuenUnits() {
-  const streets = ['Kirkeveien', 'Holbergs gate', 'Frognerveien', 'Oscars gate', 'Inkognitogata'];
+/** Samme unitId-format som Integration Layer FiberAdapter */
+function fiberAdapterUnits(buildingId, floors, unitsPerFloor, format = 'H') {
   const units = [];
-  for (let i = 1; i <= 25; i++) {
-    const street = streets[(i - 1) % streets.length];
-    const nr = 10 + i;
-    const unitId = `majorstuen-${nr}`;
+  const total = floors * unitsPerFloor;
+  for (let i = 0; i < total; i++) {
+    const floor = format === 'H' ? Math.floor(i / unitsPerFloor) + 1 : 1;
+    const unitInFloor = (i % unitsPerFloor) + 1;
+    const unitNumber = format === 'H'
+      ? `H${String(floor).padStart(2, '0')}${String(unitInFloor).padStart(2, '0')}`
+      : `Enhet ${i + 1}`;
+    const unitId = `${buildingId}-${unitNumber.toLowerCase().replace(/\s/g, '-')}`;
+    units.push({ unitId, unitNumber, floor, index: i });
+  }
+  return units;
+}
+
+const IL_RESIDENT_NAMES = [
+  'Anders Hansen', 'Bjørn Olsen', 'Christina Berg', 'David Larsen',
+  'Eva Nilsen', 'Frank Johansen', 'Grete Andersen', 'Hans Pedersen',
+  'Ingrid Kristiansen', 'Jan Eriksen', 'Kari Halvorsen', 'Lars Thomsen',
+  'Maria Martinsen', 'Nils Sørensen', 'Olivia Bakken', 'Per Haugen',
+  'Ragna Lie', 'Sigrid Moen', 'Tore Lund', 'Una Dahl',
+  'Vegard Holm', 'Wenche Berg', 'Xavier Amundsen', 'Yvonne Strand',
+];
+
+function encodeUnitNotater(address, unitId, note) {
+  const lines = [];
+  if (address && address !== unitId) lines.push(`address:${address}`);
+  if (note) {
+    if (lines.length) lines.push('');
+    lines.push(note);
+  }
+  return lines.length ? lines.join('\n') : null;
+}
+
+function majorstuenUnits() {
+  const buildingId = 'building-storgata-12';
+  const ilUnits = fiberAdapterUnits(buildingId, 6, 4);
+  const units = [];
+
+  for (const u of ilUnits) {
+    const i = u.index + 1;
+    const residentName = IL_RESIDENT_NAMES[u.index % IL_RESIDENT_NAMES.length];
+    const address = `Storgata 12, ${u.unitNumber}`;
     let utfall = 'ikke-besøkt';
     let produktId = null;
     let notater = null;
@@ -86,58 +123,86 @@ function majorstuenUnits() {
       utfall = 'ikke-besøkt';
     } else if (i <= 14) {
       utfall = i % 3 === 0 ? 'ikke-hjemme' : 'besøkt';
-      tidspunkt = new Date(Date.now() - (25 - i) * 3600_000).toISOString();
-      notater = utfall === 'besøkt' ? 'Presentert tilbud, vurderer' : 'Ingen svar på dørkladder';
+      tidspunkt = new Date(Date.now() - (24 - i) * 3600_000).toISOString();
+      notater = encodeUnitNotater(
+        address,
+        u.unitId,
+        utfall === 'besøkt' ? 'Presentert tilbud, vurderer' : 'Ingen svar på dørkladder',
+      );
     } else if (i <= 20) {
       utfall = 'solgt';
-      tidspunkt = new Date(Date.now() - (25 - i) * 7200_000).toISOString();
-      if (i % 2 === 0) {
-        produktId = 'sdu-fiber-500';
-        notater = 'Solgt: Fiber 500, Mobil M';
-      } else {
-        produktId = 'sdu-fiber-500';
-        notater = 'Solgt: Fiber 500';
-      }
+      tidspunkt = new Date(Date.now() - (24 - i) * 7200_000).toISOString();
+      produktId = 'sdu-fiber-500';
+      notater = encodeUnitNotater(
+        address,
+        u.unitId,
+        i % 2 === 0 ? 'Solgt: Fiber 500, Mobil M' : 'Solgt: Fiber 500',
+      );
     } else {
       utfall = i % 2 === 0 ? 'ikke-interessert' : 'besøkt';
       tidspunkt = new Date(Date.now() - i * 1800_000).toISOString();
-      notater = utfall === 'ikke-interessert' ? 'Ikke interessert i bytte' : 'Vil tenke på det';
+      notater = encodeUnitNotater(
+        address,
+        u.unitId,
+        utfall === 'ikke-interessert' ? 'Ikke interessert i bytte' : 'Vil tenke på det',
+      );
     }
 
-    units.push({ unitId, address: `${street} ${nr}, 0368 Oslo`, utfall, produktId, notater, tidspunkt });
+    units.push({
+      unitId: u.unitId,
+      etasje: u.floor,
+      residentName,
+      address,
+      utfall,
+      produktId,
+      notater,
+      tidspunkt,
+    });
   }
   return units;
 }
 
 function grunerlokkaUnits() {
-  const streets = ['Thorvald Meyers gate', 'Markveien', 'Seildergata', 'Bergensgata', 'Finnmarkgata'];
+  const buildingId = 'building-kirkeveien-45';
+  const ilUnits = fiberAdapterUnits(buildingId, 3, 6);
   const units = [];
-  for (let i = 1; i <= 20; i++) {
-    const street = streets[(i - 1) % streets.length];
-    const nr = 5 + i;
-    const unitId = `grunerlokka-${nr}`;
+
+  for (const u of ilUnits) {
+    const i = u.index + 1;
+    const residentName = IL_RESIDENT_NAMES[(u.index + 8) % IL_RESIDENT_NAMES.length];
+    const address = `Kirkeveien 45, ${u.unitNumber}`;
     let utfall = 'ikke-besøkt';
     let produktId = null;
     let notater = null;
     let tidspunkt = null;
 
-    if (i <= 16) {
+    if (i <= 14) {
       utfall = 'ikke-besøkt';
-    } else if (i === 17) {
+    } else if (i === 15) {
       utfall = 'solgt';
       produktId = 'sdu-fiber-500';
-      notater = 'Solgt: Fiber 500, Mobil M';
+      notater = encodeUnitNotater(address, u.unitId, 'Solgt: Fiber 500, Mobil M');
       tidspunkt = new Date(Date.now() - 4 * 3600_000).toISOString();
-    } else if (i === 18) {
+    } else if (i === 16) {
       utfall = 'besøkt';
-      notater = 'Booket oppfølging neste uke';
+      notater = encodeUnitNotater(address, u.unitId, 'Booket oppfølging neste uke');
       tidspunkt = new Date(Date.now() - 2 * 3600_000).toISOString();
     } else {
       utfall = 'ikke-hjemme';
       tidspunkt = new Date(Date.now() - 3600_000).toISOString();
+      notater = encodeUnitNotater(address, u.unitId, null);
     }
 
-    units.push({ unitId, address: `${street} ${nr}, 0555 Oslo`, utfall, produktId, notater, tidspunkt });
+    units.push({
+      unitId: u.unitId,
+      etasje: u.floor,
+      residentName,
+      address,
+      utfall,
+      produktId,
+      notater,
+      tidspunkt,
+    });
   }
   return units;
 }
@@ -180,18 +245,31 @@ async function seedSduRound(client, round, units) {
   await client.query(`
     INSERT INTO sales_core.sdu_runder (runde_id, navn, bygg_id, selger_id, leder_id, dato, status)
     VALUES ($1, $2, $3, $4, $5, $6, 'aktiv')
-    ON CONFLICT (runde_id) DO NOTHING
+    ON CONFLICT (runde_id) DO UPDATE SET
+      navn = EXCLUDED.navn,
+      bygg_id = EXCLUDED.bygg_id,
+      selger_id = EXCLUDED.selger_id,
+      leder_id = EXCLUDED.leder_id,
+      dato = EXCLUDED.dato,
+      status = EXCLUDED.status
   `, [round.id, round.name, round.buildingId, round.sellerId, round.leaderId, today]);
+
+  await client.query(`DELETE FROM sales_core.sdu_besøk WHERE runde_id = $1`, [round.id]);
 
   for (const u of units) {
     await client.query(`
-      INSERT INTO sales_core.sdu_besøk (runde_id, leilighet_id, utfall, produkt_id, notater, tidspunkt)
-      SELECT $1, $2, $3, $4, $5, $6
-      WHERE NOT EXISTS (
-        SELECT 1 FROM sales_core.sdu_besøk
-        WHERE runde_id = $1 AND leilighet_id = $2
-      )
-    `, [round.id, u.unitId, u.utfall, u.produktId, u.notater, u.tidspunkt]);
+      INSERT INTO sales_core.sdu_besøk (runde_id, leilighet_id, etasje, person_id, utfall, produkt_id, notater, tidspunkt)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    `, [
+      round.id,
+      u.unitId,
+      u.etasje ?? null,
+      u.residentName ?? null,
+      u.utfall,
+      u.produktId,
+      u.notater,
+      u.tidspunkt,
+    ]);
   }
 }
 
@@ -200,7 +278,7 @@ async function seedSduRounds(client) {
   await seedSduRound(client, {
     id: DEMO.rounds.majorstuen,
     name: 'Majorstuen Nord',
-    buildingId: 'bygg-majorstuen-nord',
+    buildingId: 'building-storgata-12',
     sellerId: DEMO.users.lars,
     leaderId: DEMO.users.tor,
   }, majorstuenUnits());
@@ -208,12 +286,12 @@ async function seedSduRounds(client) {
   await seedSduRound(client, {
     id: DEMO.rounds.grunerlokka,
     name: 'Grünerløkka Sør',
-    buildingId: 'bygg-grunerlokka-sor',
+    buildingId: 'building-kirkeveien-45',
     sellerId: DEMO.users.marte,
     leaderId: DEMO.users.tor,
   }, grunerlokkaUnits());
 
-  console.log('  ✓ Majorstuen Nord (25 enheter) + Grünerløkka Sør (20 enheter)');
+  console.log('  ✓ Majorstuen Nord (24 enheter, Storgata 12) + Grünerløkka Sør (18 enheter, Kirkeveien 45)');
 }
 
 async function seedMduDeals(client) {

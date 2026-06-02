@@ -284,6 +284,39 @@ export function dealRowToOpportunity(row: {
   };
 }
 
+/** Persist address + free-text note in sdu_besøk.notater (person_id holds residentName). */
+export function encodeUnitNotater(params: {
+  address: string;
+  unitId: string;
+  note?: string;
+}): string | null {
+  const lines: string[] = [];
+  if (params.address && params.address !== params.unitId) {
+    lines.push(`address:${params.address}`);
+  }
+  if (params.note?.trim()) {
+    if (lines.length) lines.push('');
+    lines.push(params.note.trim());
+  }
+  return lines.length ? lines.join('\n') : null;
+}
+
+export function decodeUnitNotater(
+  notater: string | null,
+  unitId: string,
+): { address: string; note?: string } {
+  if (!notater) return { address: unitId };
+  const lines = notater.split('\n');
+  let address = unitId;
+  const noteLines: string[] = [];
+  for (const line of lines) {
+    if (line.startsWith('address:')) address = line.slice('address:'.length);
+    else noteLines.push(line);
+  }
+  const note = noteLines.join('\n').trim();
+  return { address, note: note || undefined };
+}
+
 export function roundStatusToDb(status: RoundStatus): string {
   const map: Record<RoundStatus, string> = {
     draft: 'planlagt',

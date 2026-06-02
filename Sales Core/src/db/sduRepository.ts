@@ -2,6 +2,8 @@
 import { randomUUID } from 'crypto';
 import { getPool } from './pool';
 import {
+  decodeUnitNotater,
+  encodeUnitNotater,
   legacyRndId,
   roundStatusFromDb,
   roundStatusToDb,
@@ -28,6 +30,8 @@ interface BesokRow {
   besøk_id: string;
   runde_id: string;
   leilighet_id: string;
+  etasje: number | null;
+  person_id: string | null;
   utfall: string;
   notater: string | null;
   tidspunkt: Date | string | null;
@@ -49,14 +53,18 @@ async function resolveBrukerIdByIdOrName(idOrName: string): Promise<string> {
 }
 
 function assembleRound(runde: RundeRow, besok: BesokRow[]): Round {
-  const units: RoundUnit[] = besok.map((b) => ({
-    unitId: b.leilighet_id,
-    buildingId: runde.bygg_id,
-    address: b.leilighet_id,
-    visitStatus: visitStatusFromDb(b.utfall),
-    note: b.notater ?? undefined,
-    visitedAt: b.tidspunkt ? new Date(b.tidspunkt).toISOString() : undefined,
-  }));
+  const units: RoundUnit[] = besok.map((b) => {
+    const { address, note } = decodeUnitNotater(b.notater, b.leilighet_id);
+    return {
+      unitId: b.leilighet_id,
+      buildingId: runde.bygg_id,
+      address,
+      residentName: b.person_id ?? undefined,
+      visitStatus: visitStatusFromDb(b.utfall),
+      note,
+      visitedAt: b.tidspunkt ? new Date(b.tidspunkt).toISOString() : undefined,
+    };
+  });
 
   return {
     id: runde.runde_id,
@@ -77,7 +85,7 @@ async function fetchBesokForRunder(rundeIds: string[]): Promise<Map<string, Beso
 
   const pool = getPool();
   const { rows } = await pool.query(`
-    SELECT besøk_id, runde_id, leilighet_id, utfall, notater, tidspunkt
+    SELECT besøk_id, runde_id, leilighet_id, etasje, person_id, utfall, notater, tidspunkt
     FROM sales_core.sdu_besøk
     WHERE runde_id = ANY($1::uuid[])
     ORDER BY leilighet_id
@@ -132,13 +140,14 @@ export async function createSduRound(round: Round): Promise<Round> {
 
   for (const unit of round.units) {
     await pool.query(`
-      INSERT INTO sales_core.sdu_besøk (runde_id, leilighet_id, utfall, notater, tidspunkt)
-      VALUES ($1, $2, $3, $4, $5)
+      INSERT INTO sales_core.sdu_besøk (runde_id, leilighet_id, person_id, utfall, notater, tidspunkt)
+      VALUES ($1, $2, $3, $4, $5, $6)
     `, [
       rundeId,
       unit.unitId,
+      unit.residentName ?? null,
       visitStatusToDb(unit.visitStatus),
-      unit.note ?? null,
+      encodeUnitNotater({ address: unit.address, unitId: unit.unitId, note: unit.note }),
       unit.visitedAt ?? null,
     ]);
   }
@@ -178,13 +187,14 @@ export async function updateSduRound(id: string, patch: Partial<Round>): Promise
   await pool.query('DELETE FROM sales_core.sdu_besøk WHERE runde_id = $1', [rundeId]);
   for (const unit of merged.units) {
     await pool.query(`
-      INSERT INTO sales_core.sdu_besøk (runde_id, leilighet_id, utfall, notater, tidspunkt)
-      VALUES ($1, $2, $3, $4, $5)
+      INSERT INTO sales_core.sdu_besøk (runde_id, leilighet_id, person_id, utfall, notater, tidspunkt)
+      VALUES ($1, $2, $3, $4, $5, $6)
     `, [
       rundeId,
       unit.unitId,
+      unit.residentName ?? null,
       visitStatusToDb(unit.visitStatus),
-      unit.note ?? null,
+      encodeUnitNotater({ address: unit.address, unitId: unit.unitId, note: unit.note }),
       unit.visitedAt ?? null,
     ]);
   }
