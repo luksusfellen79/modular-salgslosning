@@ -4,14 +4,18 @@ import dotenv from 'dotenv';
 import express, { Express } from 'express';
 import { logger } from './logger';
 import { router } from './api/router';
+import { initDevCenter, requestLogger, errorReporter } from './devcenter';
 
 dotenv.config();
+initDevCenter('kas-core');
 
 export function createApp(): Express {
   const app = express();
   app.use(cors({ origin: '*' }));
   app.use(express.json());
+  app.use(requestLogger());
   app.use(router);
+  app.use(errorReporter());
   return app;
 }
 

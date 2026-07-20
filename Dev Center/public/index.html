@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dev Center — Modulær salgsløsning</title>
+<style>
+  :root {
+    --bg: #0d1117; --panel: #161b22; --border: #30363d; --text: #e6edf3;
+    --muted: #8b949e; --accent: #58a6ff; --green: #3fb950; --yellow: #d29922;
+    --red: #f85149; --mono: 'SF Mono', Consolas, 'Liberation Mono', monospace;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, 'Segoe UI', sans-serif; font-size: 14px; }
+  header { display: flex; align-items: center; gap: 16px; padding: 14px 24px; border-bottom: 1px solid var(--border); background: var(--panel); position: sticky; top: 0; z-index: 10; }
+  header h1 { font-size: 16px; font-weight: 600; }
+  header .stats { display: flex; gap: 20px; margin-left: auto; font-size: 12px; color: var(--muted); }
+  header .stats b { color: var(--text); font-family: var(--mono); }
+  main { padding: 20px 24px; max-width: 1400px; margin: 0 auto; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); margin: 24px 0 10px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; }
+  .card .name { font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .dot.green { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .dot.yellow { background: var(--yellow); box-shadow: 0 0 6px var(--yellow); }
+  .dot.red { background: var(--red); box-shadow: 0 0 6px var(--red); }
+  .card .metrics { display: flex; gap: 14px; margin-top: 10px; font-size: 12px; color: var(--muted); }
+  .card .metrics b { display: block; color: var(--text); font-family: var(--mono); font-size: 14px; }
+  .alert-row { background: rgba(248, 81, 73, 0.08); border: 1px solid rgba(248, 81, 73, 0.4); border-radius: 8px; padding: 10px 14px; margin-bottom: 8px; font-size: 13px; display: flex; gap: 10px; align-items: baseline; }
+  .alert-row time { color: var(--muted); font-size: 12px; font-family: var(--mono); flex-shrink: 0; }
+  .filters { display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
+  select, input[type=text], button { background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; font-size: 13px; }
+  input[type=text] { width: 260px; }
+  button { cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  label.toggle { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; cursor: pointer; }
+  table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  th, td { text-align: left; padding: 7px 12px; border-bottom: 1px solid var(--border); font-size: 13px; }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; background: #1c2129; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover { background: #1c2129; }
+  td.mono, .mono { font-family: var(--mono); font-size: 12px; }
+  .status { font-family: var(--mono); font-weight: 600; }
+  .s2 { color: var(--green); } .s3 { color: var(--accent); } .s4 { color: var(--yellow); } .s5, .serr { color: var(--red); }
+  .corr { color: var(--accent); text-decoration: underline dotted; }
+  .drawer { position: fixed; top: 0; right: 0; width: min(680px, 95vw); height: 100vh; background: var(--panel); border-left: 1px solid var(--border); transform: translateX(100%); transition: transform 0.2s; z-index: 20; overflow-y: auto; padding: 20px; }
+  .drawer.open { transform: translateX(0); }
+  .drawer h3 { font-size: 15px; margin-bottom: 4px; }
+  .drawer .close { position: absolute; top: 14px; right: 16px; }
+  .kv { display: grid; grid-template-columns: 130px 1fr; gap: 4px 12px; margin: 14px 0; font-size: 13px; }
+  .kv dt { color: var(--muted); }
+  .kv dd { font-family: var(--mono); font-size: 12px; word-break: break-all; }
+  pre { background: #0d1117; border: 1px solid var(--border); border-radius: 6px; padding: 12px; font-size: 12px; overflow-x: auto; white-space: pre-wrap; word-break: break-word; color: #ffa198; margin: 8px 0 16px; }
+  pre.body { color: var(--text); }
+  .trace-step { border-left: 3px solid var(--accent); padding: 8px 12px; margin: 8px 0; background: #0d1117; border-radius: 0 6px 6px 0; }
+  .trace-step.err { border-left-color: var(--red); }
+  .trace-step .head { display: flex; gap: 10px; font-family: var(--mono); font-size: 12px; }
+  .empty { color: var(--muted); padding: 24px; text-align: center; }
+  .muted { color: var(--muted); }
+  #overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: none; z-index: 15; }
+  #overlay.show { display: block; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🛠 Dev Center</h1>
+  <span class="muted" style="font-size:12px">Modulær salgsløsning</span>
+  <div class="stats" id="topStats"></div>
+</header>
+<main>
+  <h2>Tjenester</h2>
+  <div class="cards" id="serviceCards"><div class="empty">Laster …</div></div>
+
+  <h2>Aktive varsler</h2>
+  <div id="alerts"><div class="empty">Ingen varsler 🎉</div></div>
+
+  <h2>Request-logg</h2>
+  <div class="filters">
+    <select id="fService"><option value="">Alle tjenester</option></select>
+    <label class="toggle"><input type="checkbox" id="fErrors"> Kun feil</label>
+    <input type="text" id="fSearch" placeholder="Søk i path, melding, correlation ID …">
+    <button id="btnRefresh">Oppdater</button>
+    <label class="toggle"><input type="checkbox" id="fAuto" checked> Auto (10s)</label>
+  </div>
+  <table>
+    <thead><tr><th>Tid</th><th>Tjeneste</th><th>Metode</th><th>Path</th><th>Status</th><th>ms</th><th>Correlation</th></tr></thead>
+    <tbody id="logRows"><tr><td colspan="7" class="empty">Laster …</td></tr></tbody>
+  </table>
+  <div style="margin-top:10px"><button id="btnMore">Last flere</button></div>
+</main>
+
+<div id="overlay"></div>
+<div class="drawer" id="drawer">
+  <button class="close" id="btnClose">✕ Lukk</button>
+  <div id="drawerContent"></div>
+</div>
+
+<script src="/config.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+let oldestId = null;
+let knownServices = new Set();
+
+function apiHeaders() {
+  const h = {};
+  if (window.DEVCENTER_API_KEY) h['X-API-Key'] = window.DEVCENTER_API_KEY;
+  return h;
+}
+
+async function apiFetch(url) {
+  return fetch(url, { headers: apiHeaders() }).then(r => r.json());
+}
+
+const fmtTime = (ts) => new Date(ts).toLocaleTimeString('no-NO', { hour12: false }) + '.' + String(ts % 1000).padStart(3, '0');
+const fmtDateTime = (ts) => new Date(ts).toLocaleString('no-NO', { hour12: false });
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const statusClass = (row) => row.type === 'error' ? 'serr' : row.status ? 's' + String(row.status)[0] : '';
+
+async function loadStats() {
+  const s = await apiFetch('/api/stats').catch(() => null);
+  if (!s) return;
+  $('topStats').innerHTML =
+    `<span>Kall siste time: <b>${s.requestsLastHour ?? 0}</b></span>` +
+    `<span>Feil siste time: <b class="${(s.errorsLastHour||0) > 0 ? 'serr' : ''}">${s.errorsLastHour ?? 0}</b></span>` +
+    `<span>Snitt: <b>${s.avgMs ?? '–'} ms</b></span>` +
+    `<span>Logger totalt: <b>${s.totalLogs ?? 0}</b></span>`;
+}
+
+async function loadServices() {
+  const data = await apiFetch('/api/services').catch(() => null);
+  if (!data) return;
+  const cards = data.services.map(s => {
+    if (!knownServices.has(s.name)) {
+      knownServices.add(s.name);
+      const opt = document.createElement('option');
+      opt.value = s.name; opt.textContent = s.name;
+      $('fService').appendChild(opt);
+    }
+    const w = s.window15m;
+    const check = s.lastCheck
+      ? (s.lastCheck.ok ? `oppe (${s.lastCheck.latencyMs} ms)` : `NEDE (HTTP ${s.lastCheck.statusCode ?? 'timeout'})`)
+      : 'ingen helsesjekk';
+    return `<div class="card">
+      <div class="name"><span class="dot ${s.health}"></span>${esc(s.name)}</div>
+      <div class="metrics">
+        <span>Kall 15m<b>${w.requests}</b></span>
+        <span>Feilrate<b class="${w.errorRate > 5 ? 'serr' : ''}">${w.errorRate} %</b></span>
+        <span>Snitt<b>${w.avgMs ?? '–'} ms</b></span>
+      </div>
+      <div class="muted" style="margin-top:8px;font-size:12px">Helsesjekk: ${check}</div>
+    </div>`;
+  });
+  $('serviceCards').innerHTML = cards.join('') || '<div class="empty">Ingen tjenester registrert</div>';
+}
+
+async function loadAlerts() {
+  const data = await apiFetch('/api/alerts').catch(() => null);
+  if (!data) return;
+  const recent = data.alerts.slice(0, 10);
+  $('alerts').innerHTML = recent.length
+    ? recent.map(a => `<div class="alert-row"><time>${fmtDateTime(a.ts)}</time><b>${esc(a.service)}</b> ${esc(a.message)}</div>`).join('')
+    : '<div class="empty">Ingen varsler 🎉</div>';
+}
+
+function rowHtml(row) {
+  return `<tr data-id="${row.id}">
+    <td class="mono">${fmtTime(row.ts)}</td>
+    <td>${esc(row.service)}</td>
+    <td class="mono">${esc(row.method ?? (row.type === 'error' ? 'ERR' : ''))}</td>
+    <td class="mono">${esc(row.path ?? row.message ?? '')}</td>
+    <td class="status ${statusClass(row)}">${row.type === 'error' ? 'FEIL' : (row.status ?? '')}</td>
+    <td class="mono">${row.durationMs ?? ''}</td>
+    <td class="mono">${row.correlationId ? `<span class="corr" data-corr="${esc(row.correlationId)}">${esc(row.correlationId.slice(0, 8))}…</span>` : ''}</td>
+  </tr>`;
+}
+
+function logQuery(before) {
+  const p = new URLSearchParams();
+  if ($('fService').value) p.set('service', $('fService').value);
+  if ($('fErrors').checked) p.set('errorsOnly', 'true');
+  if ($('fSearch').value) p.set('search', $('fSearch').value);
+  if (before) p.set('before', before);
+  return '/api/logs?' + p.toString();
+}
+
+async function loadLogs(append) {
+  const data = await apiFetch(logQuery(append ? oldestId : null)).catch(() => null);
+  if (!data) return;
+  const html = data.logs.map(rowHtml).join('');
+  if (append) $('logRows').insertAdjacentHTML('beforeend', html);
+  else $('logRows').innerHTML = html || '<tr><td colspan="7" class="empty">Ingen logger matcher</td></tr>';
+  if (data.logs.length) oldestId = data.logs[data.logs.length - 1].id;
+}
+
+async function openDetail(id) {
+  const d = await apiFetch('/api/logs/' + id).catch(() => null);
+  if (!d) return;
+  let html = `<h3>${d.type === 'error' ? '🔴 Feil' : 'Request'} — ${esc(d.service)}</h3>
+    <dl class="kv">
+      <dt>Tidspunkt</dt><dd>${fmtDateTime(d.ts)}</dd>
+      <dt>Metode / path</dt><dd>${esc(d.method ?? '')} ${esc(d.path ?? '')}</dd>
+      <dt>Status</dt><dd>${d.status ?? '–'}</dd>
+      <dt>Varighet</dt><dd>${d.durationMs ?? '–'} ms</dd>
+      <dt>Correlation ID</dt><dd>${d.correlationId ? `<span class="corr" data-corr="${esc(d.correlationId)}">${esc(d.correlationId)}</span>` : '–'}</dd>
+    </dl>`;
+  if (d.message) html += `<h4 class="muted">Melding</h4><pre>${esc(d.message)}</pre>`;
+  if (d.stack) html += `<h4 class="muted">Stack trace</h4><pre>${esc(d.stack)}</pre>`;
+  if (d.requestBody) html += `<h4 class="muted">Request body</h4><pre class="body">${esc(d.requestBody)}</pre>`;
+  if (d.meta) html += `<h4 class="muted">Meta</h4><pre class="body">${esc(d.meta)}</pre>`;
+  showDrawer(html);
+}
+
+async function openTrace(corrId) {
+  const data = await apiFetch('/api/traces/' + encodeURIComponent(corrId)).catch(() => null);
+  if (!data) return;
+  const t0 = data.events.length ? data.events[0].ts : 0;
+  let html = `<h3>Trace</h3><div class="mono muted" style="margin-bottom:12px">${esc(corrId)}</div>`;
+  html += data.events.map(e => `
+    <div class="trace-step ${e.type === 'error' || (e.status >= 500) ? 'err' : ''}">
+      <div class="head">
+        <span>+${e.ts - t0} ms</span><b>${esc(e.service)}</b>
+        <span>${esc(e.method ?? '')} ${esc(e.path ?? '')}</span>
+        <span class="status ${statusClass(e)}">${e.type === 'error' ? 'FEIL' : (e.status ?? '')}</span>
+        <span>${e.durationMs != null ? e.durationMs + ' ms' : ''}</span>
+      </div>
+      ${e.message ? `<pre style="margin:6px 0 0">${esc(e.message)}</pre>` : ''}
+      ${e.stack ? `<pre style="margin:6px 0 0">${esc(e.stack)}</pre>` : ''}
+    </div>`).join('');
+  if (!data.events.length) html += '<div class="empty">Ingen hendelser for denne ID-en</div>';
+  showDrawer(html);
+}
+
+function showDrawer(html) { $('drawerContent').innerHTML = html; $('drawer').classList.add('open'); $('overlay').classList.add('show'); }
+function hideDrawer() { $('drawer').classList.remove('open'); $('overlay').classList.remove('show'); }
+
+document.addEventListener('click', (e) => {
+  const corr = e.target.closest('[data-corr]');
+  if (corr) { e.stopPropagation(); openTrace(corr.dataset.corr); return; }
+  const row = e.target.closest('tr[data-id]');
+  if (row) openDetail(row.dataset.id);
+});
+$('btnClose').addEventListener('click', hideDrawer);
+$('overlay').addEventListener('click', hideDrawer);
+$('btnRefresh').addEventListener('click', () => { oldestId = null; loadLogs(false); });
+$('btnMore').addEventListener('click', () => loadLogs(true));
+['fService', 'fErrors'].forEach(id => $(id).addEventListener('change', () => { oldestId = null; loadLogs(false); }));
+$('fSearch').addEventListener('keydown', (e) => { if (e.key === 'Enter') { oldestId = null; loadLogs(false); } });
+
+function refreshAll() { loadStats(); loadServices(); loadAlerts(); if (!$('drawer').classList.contains('open')) { oldestId = null; loadLogs(false); } }
+refreshAll();
+setInterval(() => { if ($('fAuto').checked) refreshAll(); }, 10000);
+</script>
+</body>
+</html>

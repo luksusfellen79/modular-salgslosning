@@ -29,7 +29,10 @@ import { createEventBusRouter } from './events/EventBusRouter.js';
 import { registerIncentiveHandlers } from './events/handlers/incentive-handler.js';
 import { createBonusesRouter } from './api/bonuses.js';
 import { correlationIdMiddleware } from './middleware/jwt.middleware.js';
+import { initDevCenter, requestLogger, errorReporter } from './devcenter.js';
 import { HealthResponse } from './types/domain.js';
+
+initDevCenter('integration-layer');
 
 const PORT = parseInt(process.env.PORT ?? process.env.INTEGRATION_PORT ?? '3010', 10);
 const startedAt = Date.now();
@@ -89,7 +92,8 @@ eventBus.subscribe('telenor.pricing.campaign.activated', async (event) => {
 const app = express();
 app.use(cors({ origin: '*' }));
 app.use(express.json());
-app.use(correlationIdMiddleware);     // correlation-ID tidlig i kjeden
+app.use(requestLogger());
+app.use(correlationIdMiddleware);
 
 // ─── Helse-endepunkt ───────────────────────────────────────────────────────────────
 
@@ -134,6 +138,8 @@ app.use('/events', createEventBusRouter(eventBus));
 
 // Beregnede bonuser (Incentive Manager)
 app.use('/bonuses', createBonusesRouter());
+
+app.use(errorReporter());
 
 // ─── Start ────────────────────────────────────────────────────────────────────────────
 

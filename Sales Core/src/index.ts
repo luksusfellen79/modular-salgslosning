@@ -10,12 +10,15 @@ import { ensureSeedData } from './seed';
 import { router } from './api/router';
 import { logger } from './logger';
 import { usePostgres } from './db/pool';
+import { initDevCenter, requestLogger, errorReporter } from './devcenter';
 
 dotenv.config();
+initDevCenter('sales-core');
 
 export const app = express();
 app.use(cors({ origin: '*' }));
 app.use(express.json());
+app.use(requestLogger());
 
 const seedReady = ensureSeedData().catch((err) => {
   logger.error({ message: 'Seed initialization failed', error: String(err) });
@@ -41,6 +44,7 @@ app.use((err: Error, _req: express.Request, res: express.Response, next: express
 });
 
 app.use(router);
+app.use(errorReporter());
 
 if (usePostgres()) {
   logger.info({ message: 'Sales Core using PostgreSQL storage' });

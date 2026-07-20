@@ -1,4 +1,5 @@
 // ── Publiser hendelser til Integration Layer EventBus ──
+import { correlationHeaders, reportError } from '../devcenter';
 import { logger } from '../logger';
 import { EventTopic } from './topics';
 
@@ -13,7 +14,10 @@ export async function publishIntegrationEvent(
   try {
     const res = await fetch(`${INTEGRATION_LAYER_URL}/events/publish`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...correlationHeaders(),
+      },
       body: JSON.stringify({
         topic,
         payload,
@@ -23,6 +27,7 @@ export async function publishIntegrationEvent(
 
     if (!res.ok) {
       const body = await res.text();
+      reportError('Integration Layer event publish failed', undefined, { topic, status: res.status, body });
       logger.warn({
         message: 'Integration Layer event publish failed',
         topic,
@@ -31,6 +36,7 @@ export async function publishIntegrationEvent(
       });
     }
   } catch (err) {
+    reportError('Integration Layer event publish error', err, { topic });
     logger.warn({
       message: 'Integration Layer event publish error',
       topic,
