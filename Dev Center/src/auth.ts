@@ -29,9 +29,10 @@ function readSessionCookie(req: Request): string | undefined {
 }
 
 function setSessionCookie(res: Response, encodedSession: string): void {
+  const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
   res.setHeader(
     'Set-Cookie',
-    `${SESSION_COOKIE}=${encodedSession}; HttpOnly; Path=/; Max-Age=${SESSION_MAX_AGE_SEC}; SameSite=Lax`,
+    `${SESSION_COOKIE}=${encodedSession}; HttpOnly; Path=/; Max-Age=${SESSION_MAX_AGE_SEC}; SameSite=Lax${secure}`,
   );
 }
 
