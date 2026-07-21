@@ -2,12 +2,12 @@
 import { Router, Request, Response } from 'express';
 import { insertLogs, LogEntry } from '../db';
 import { evaluateAlerts } from '../alerts/engine';
-import { requireApiKey } from '../middleware/apiKey';
+import { requireIngestKey } from '../middleware/ingestKey';
 
 export function createIngestRouter(): Router {
   const router = Router();
 
-  router.post('/', requireApiKey, (req: Request, res: Response) => {
+  router.post('/', requireIngestKey, (req: Request, res: Response) => {
     const { service, entries } = req.body ?? {};
 
     if (typeof service !== 'string' || !Array.isArray(entries)) {

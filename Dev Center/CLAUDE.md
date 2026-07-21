@@ -27,7 +27,7 @@ Sentral observability for salgsplattformen: request-logg, feilsporing med stack 
 | `DB_PATH` | ./data/devcenter.db | Pek på Railway volume, f.eks. /data/devcenter.db |
 | `MONITORED_SERVICES` | prod-URLer for integration-layer, sales-core, kas-core | JSON: `[{"name":"...","url":"https://.../health"}]` |
 | `RETENTION_DAYS` | 14 | |
-| `DEVCENTER_API_KEY` | (av) | Beskytter `/ingest` og `/api/*` når satt — send som `X-API-Key` fra middleware og dashboard |
+| `DEVCENTER_INGEST_KEY` | (av) | Beskytter `POST /ingest` — send som `x-ingest-key` fra middleware |
 | `ALERT_WEBHOOK_URL` | (av) | |
 | `ALERT_ERROR_THRESHOLD` | 0.1 | |
 | `ALERT_MIN_ERRORS` | 5 | |
@@ -37,7 +37,13 @@ Sentral observability for salgsplattformen: request-logg, feilsporing med stack 
 
 1. Ny service fra repo, root directory `Dev Center`, Node ≥ 22.5 (satt i engines)
 2. Legg til volume, sett `DB_PATH=/data/devcenter.db`
-3. Sett `DEVCENTER_URL=https://<dev-center-domene>` og `DEVCENTER_API_KEY=<delt-secret>` på integration-layer, sales-core og kas-core
+3. Sett `DEVCENTER_URL` og `DEVCENTER_INGEST_KEY` på integration-layer, sales-core og kas-core
+
+## Tilgang
+
+- **Dashboard + `/api/*`:** Hub-session (`?hub_session=`) med `role === 'superadmin'`. Setter httpOnly cookie (8t).
+- **`POST /ingest`:** `x-ingest-key` header når `DEVCENTER_INGEST_KEY` er satt.
+- **`GET /health`:** Åpen (helse-poller).
 
 ## Koble på flere tjenester
 

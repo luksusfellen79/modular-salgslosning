@@ -2,12 +2,9 @@
 import { Router, Request, Response } from 'express';
 import { db } from '../db';
 import { getMonitoredServices } from '../health/poller';
-import { requireApiKey } from '../middleware/apiKey';
 
 export function createQueryRouter(): Router {
   const router = Router();
-
-  router.use(requireApiKey);
 
   router.get('/logs', (req: Request, res: Response) => {
     const { service, errorsOnly, search, status, before } = req.query;

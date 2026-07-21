@@ -35,14 +35,14 @@ const als = new AsyncLocalStorage<{ correlationId: string }>();
 
 let serviceName = 'unknown';
 let devCenterUrl: string | undefined;
-let devCenterApiKey: string | undefined;
+let devCenterIngestKey: string | undefined;
 let buffer: DevCenterEntry[] = [];
 let flushTimer: NodeJS.Timeout | undefined;
 
 export function initDevCenter(name: string): void {
   serviceName = name;
   devCenterUrl = process.env.DEVCENTER_DISABLED === 'true' ? undefined : process.env.DEVCENTER_URL;
-  devCenterApiKey = process.env.DEVCENTER_API_KEY;
+  devCenterIngestKey = process.env.DEVCENTER_INGEST_KEY;
   if (!devCenterUrl) return;
 
   flushTimer = setInterval(flush, FLUSH_INTERVAL_MS);
@@ -61,7 +61,7 @@ async function flush(): Promise<void> {
   buffer = [];
   try {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (devCenterApiKey) headers['X-API-Key'] = devCenterApiKey;
+    if (devCenterIngestKey) headers['x-ingest-key'] = devCenterIngestKey;
 
     await fetch(`${devCenterUrl.replace(/\/$/, '')}/ingest`, {
       method: 'POST',

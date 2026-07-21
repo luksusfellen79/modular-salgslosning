@@ -96,21 +96,10 @@
   <div id="drawerContent"></div>
 </div>
 
-<script src="/config.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 let oldestId = null;
 let knownServices = new Set();
-
-function apiHeaders() {
-  const h = {};
-  if (window.DEVCENTER_API_KEY) h['X-API-Key'] = window.DEVCENTER_API_KEY;
-  return h;
-}
-
-async function apiFetch(url) {
-  return fetch(url, { headers: apiHeaders() }).then(r => r.json());
-}
 
 const fmtTime = (ts) => new Date(ts).toLocaleTimeString('no-NO', { hour12: false }) + '.' + String(ts % 1000).padStart(3, '0');
 const fmtDateTime = (ts) => new Date(ts).toLocaleString('no-NO', { hour12: false });
@@ -118,7 +107,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':
 const statusClass = (row) => row.type === 'error' ? 'serr' : row.status ? 's' + String(row.status)[0] : '';
 
 async function loadStats() {
-  const s = await apiFetch('/api/stats').catch(() => null);
+  const s = await fetch('/api/stats').then(r => r.json()).catch(() => null);
   if (!s) return;
   $('topStats').innerHTML =
     `<span>Kall siste time: <b>${s.requestsLastHour ?? 0}</b></span>` +
@@ -128,7 +117,7 @@ async function loadStats() {
 }
 
 async function loadServices() {
-  const data = await apiFetch('/api/services').catch(() => null);
+  const data = await fetch('/api/services').then(r => r.json()).catch(() => null);
   if (!data) return;
   const cards = data.services.map(s => {
     if (!knownServices.has(s.name)) {
@@ -155,7 +144,7 @@ async function loadServices() {
 }
 
 async function loadAlerts() {
-  const data = await apiFetch('/api/alerts').catch(() => null);
+  const data = await fetch('/api/alerts').then(r => r.json()).catch(() => null);
   if (!data) return;
   const recent = data.alerts.slice(0, 10);
   $('alerts').innerHTML = recent.length
@@ -185,7 +174,7 @@ function logQuery(before) {
 }
 
 async function loadLogs(append) {
-  const data = await apiFetch(logQuery(append ? oldestId : null)).catch(() => null);
+  const data = await fetch(logQuery(append ? oldestId : null)).then(r => r.json()).catch(() => null);
   if (!data) return;
   const html = data.logs.map(rowHtml).join('');
   if (append) $('logRows').insertAdjacentHTML('beforeend', html);
@@ -194,7 +183,7 @@ async function loadLogs(append) {
 }
 
 async function openDetail(id) {
-  const d = await apiFetch('/api/logs/' + id).catch(() => null);
+  const d = await fetch('/api/logs/' + id).then(r => r.json()).catch(() => null);
   if (!d) return;
   let html = `<h3>${d.type === 'error' ? '🔴 Feil' : 'Request'} — ${esc(d.service)}</h3>
     <dl class="kv">
@@ -212,7 +201,7 @@ async function openDetail(id) {
 }
 
 async function openTrace(corrId) {
-  const data = await apiFetch('/api/traces/' + encodeURIComponent(corrId)).catch(() => null);
+  const data = await fetch('/api/traces/' + encodeURIComponent(corrId)).then(r => r.json()).catch(() => null);
   if (!data) return;
   const t0 = data.events.length ? data.events[0].ts : 0;
   let html = `<h3>Trace</h3><div class="mono muted" style="margin-bottom:12px">${esc(corrId)}</div>`;

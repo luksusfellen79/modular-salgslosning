@@ -8,6 +8,7 @@ import { pruneOldData } from './db';
 import { createIngestRouter } from './api/ingest';
 import { createQueryRouter } from './api/query';
 import { startHealthPoller, getMonitoredServices } from './health/poller';
+import { requireSuperadmin } from './auth';
 import { logger } from './logger';
 
 const PORT = parseInt(process.env.PORT ?? process.env.DEVCENTER_PORT ?? '3020', 10);
@@ -27,14 +28,8 @@ app.get('/health', (_req, res) => {
 });
 
 app.use('/ingest', createIngestRouter());
-app.use('/api', createQueryRouter());
-
-app.get('/config.js', (_req, res) => {
-  const key = process.env.DEVCENTER_API_KEY ?? '';
-  res.type('application/javascript').send(`window.DEVCENTER_API_KEY=${JSON.stringify(key)};`);
-});
-
-app.use(express.static(path.join(__dirname, '..', 'public')));
+app.use('/api', requireSuperadmin, createQueryRouter());
+app.use(requireSuperadmin, express.static(path.join(__dirname, '..', 'public')));
 
 function startBackgroundJobs(): void {
   startHealthPoller();

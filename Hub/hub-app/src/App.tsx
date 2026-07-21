@@ -16,6 +16,9 @@ const APP_URLS: Record<AppPermission, string> = {
   case_app:      (import.meta.env.VITE_CASE_APP_URL      as string | undefined) ?? 'http://localhost:5179',
 };
 
+const DEVCENTER_URL: string =
+  (import.meta.env.VITE_DEVCENTER_URL as string | undefined) ?? 'http://localhost:3020';
+
 // ─── Design ───────────────────────────────────────────────────────────────────
 const BLUE      = '#005A8E';
 const BLUE_DARK = '#003D61';
@@ -369,6 +372,34 @@ function Dashboard({ user, stats, onAdmin, onLogout, onInsights, onNBA }: { user
                 <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 22, flexShrink: 0 }}>→</div>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Superadmin-verktøy — kun superadmin */}
+        {user.role === 'superadmin' && (
+          <div style={{ marginTop: 36 }}>
+            <h2 style={{ margin: '0 0 20px', fontSize: 16, fontWeight: 700, color: GRAY600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Plattform-verktøy
+            </h2>
+            <a
+              href={appUrl(DEVCENTER_URL, user)}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ textDecoration: 'none', display: 'block', borderRadius: 18, overflow: 'hidden', boxShadow: '0 4px 20px rgba(0,0,0,0.08)', transition: 'transform 0.2s, box-shadow 0.2s' }}
+              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.boxShadow = '0 12px 40px rgba(0,0,0,0.15)'; }}
+              onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,0,0,0.08)'; }}
+            >
+              <div style={{ background: 'linear-gradient(135deg, #334155 0%, #0F172A 100%)', padding: '28px 24px 24px', position: 'relative', overflow: 'hidden' }}>
+                <div style={{ position: 'absolute', top: -20, right: -20, fontSize: 80, opacity: 0.15 }}>🛠</div>
+                <div style={{ fontSize: 36, marginBottom: 12 }}>🛠</div>
+                <div style={{ fontSize: 20, fontWeight: 800, color: 'white', lineHeight: 1.2 }}>Dev Center</div>
+                <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.65)', marginTop: 4 }}>Observability, logger og helse</div>
+              </div>
+              <div style={{ background: 'white', padding: '16px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#334155' }}>Åpne →</span>
+                <span style={{ fontSize: 11, color: GRAY400, background: GRAY100, padding: '3px 8px', borderRadius: 99 }}>Superadmin</span>
+              </div>
+            </a>
           </div>
         )}
       </main>
