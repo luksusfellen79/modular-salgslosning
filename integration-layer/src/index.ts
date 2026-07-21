@@ -30,6 +30,7 @@ import { registerIncentiveHandlers } from './events/handlers/incentive-handler.j
 import { createBonusesRouter } from './api/bonuses.js';
 import { createLocationAdapter } from './adapters/locationAdapterFactory.js';
 import { createLocationsRouter } from './routes/locations.js';
+import { createBuildingsLocationsRouter } from './routes/buildings.js';
 import { correlationIdMiddleware } from './middleware/jwt.middleware.js';
 import { initDevCenter, requestLogger, errorReporter } from './devcenter.js';
 import { HealthResponse } from './types/domain.js';
@@ -144,6 +145,7 @@ app.use('/bonuses', createBonusesRouter());
 
 // SDU Planner — boenhetsoppslag via opaque farid
 app.use('/locations', createLocationsRouter(locationAdapter, cache));
+app.use('/buildings', createBuildingsLocationsRouter(locationAdapter, cache));
 
 app.use(errorReporter());
 

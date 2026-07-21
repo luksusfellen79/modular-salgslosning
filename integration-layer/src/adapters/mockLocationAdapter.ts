@@ -132,8 +132,11 @@ function buildRegistry(): Map<string, Location> {
   return byFarid;
 }
 
-/** Første seeded farid — brukes i tester. */
-export const MOCK_SAMPLE_FARID = mintFarid('building-storgata-12', 'h0101');
+/** Seed-verdier for tester. */
+export const MOCK_SAMPLE_BUILDING_ID = 'building-storgata-12';
+export const MOCK_SAMPLE_FARID = mintFarid(MOCK_SAMPLE_BUILDING_ID, 'h0101');
+/** Antall boenheter i Storgata 12-seed. */
+export const MOCK_SAMPLE_BUILDING_UNIT_COUNT = 3;
 
 export class MockLocationAdapter implements LocationAdapter {
   private readonly byFarid = buildRegistry();

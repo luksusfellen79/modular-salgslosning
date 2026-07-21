@@ -4,5 +4,5 @@ import { Location } from '../domain/location.js';
 
 export interface LocationAdapter {
   getByFarid(farid: string): Promise<Location | null>;
-  listByBuilding?(buildingId: string): Promise<Location[]>;
+  listByBuilding(buildingId: string): Promise<Location[]>;
 }
