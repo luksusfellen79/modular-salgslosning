@@ -28,6 +28,8 @@ import { createMduProductsRouter } from './api/mdu-products.js';
 import { createEventBusRouter } from './events/EventBusRouter.js';
 import { registerIncentiveHandlers } from './events/handlers/incentive-handler.js';
 import { createBonusesRouter } from './api/bonuses.js';
+import { createLocationAdapter } from './adapters/locationAdapterFactory.js';
+import { createLocationsRouter } from './routes/locations.js';
 import { correlationIdMiddleware } from './middleware/jwt.middleware.js';
 import { initDevCenter, requestLogger, errorReporter } from './devcenter.js';
 import { HealthResponse } from './types/domain.js';
@@ -51,6 +53,7 @@ const tvAdapter = new TvAdapter();
 const pricingAdapter = new PricingAdapter();
 const customerAdapter = new CustomerAdapter();
 const emailAdapter = new EmailAdapter();
+const locationAdapter = createLocationAdapter();
 
 // Produkt-adaptere
 registry.registerProductAdapter(fiberAdapter);
@@ -138,6 +141,9 @@ app.use('/events', createEventBusRouter(eventBus));
 
 // Beregnede bonuser (Incentive Manager)
 app.use('/bonuses', createBonusesRouter());
+
+// SDU Planner — boenhetsoppslag via opaque farid
+app.use('/locations', createLocationsRouter(locationAdapter, cache));
 
 app.use(errorReporter());
 
