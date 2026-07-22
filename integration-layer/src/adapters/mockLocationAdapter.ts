@@ -135,6 +135,10 @@ function buildRegistry(): Map<string, Location> {
 /** Seed-verdier for tester. */
 export const MOCK_SAMPLE_BUILDING_ID = 'building-storgata-12';
 export const MOCK_SAMPLE_FARID = mintFarid(MOCK_SAMPLE_BUILDING_ID, 'h0101');
+export const MOCK_SAMPLE_FARID_2 = mintFarid(MOCK_SAMPLE_BUILDING_ID, 'h0102');
+export const MOCK_SAMPLE_FARID_3 = mintFarid(MOCK_SAMPLE_BUILDING_ID, 'h0201');
+export const MOCK_SAMPLE_FARID_OTHER_BUILDING = mintFarid('building-kirkeveien-45', 'h0101');
+export const MOCK_SAMPLE_FARID_EKEBERG = mintFarid('building-ekebergveien-14', 'enhet-1');
 /** Antall boenheter i Storgata 12-seed. */
 export const MOCK_SAMPLE_BUILDING_UNIT_COUNT = 3;
 
@@ -158,5 +162,14 @@ export class MockLocationAdapter implements LocationAdapter {
 
   async listByBuilding(buildingId: string): Promise<Location[]> {
     return this.byBuilding.get(buildingId) ?? [];
+  }
+
+  async resolveMany(farids: string[]): Promise<Location[]> {
+    const found: Location[] = [];
+    for (const farid of farids) {
+      const location = this.byFarid.get(farid);
+      if (location) found.push(location);
+    }
+    return found;
   }
 }
