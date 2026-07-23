@@ -3,6 +3,7 @@
 import { createHash } from 'crypto';
 import { Beboer, Coord, Location, TidligereProdukt } from '../domain/location.js';
 import { LocationAdapter } from './locationAdapter.js';
+import catalogJson from '../data/buildings-catalog.json';
 
 function mintFarid(buildingId: string, unitKey: string): string {
   const hash = createHash('sha256')
@@ -10,6 +11,25 @@ function mintFarid(buildingId: string, unitKey: string): string {
     .digest('hex')
     .slice(0, 12);
   return `far_${hash}`;
+}
+
+/** Samme unitKey-format som tidligere hardkodede seeds (lowercase unitNumber). */
+function unitKeyFromUnitNumber(unitNumber: string): string {
+  return unitNumber.toLowerCase().replace(/\s/g, '-');
+}
+
+interface CatalogUnit {
+  unitNumber: string;
+  floor: number;
+  resident: string;
+}
+
+interface CatalogBuilding {
+  buildingId: string;
+  address: string;
+  area: string;
+  coord: { lat: number; lng: number };
+  units: CatalogUnit[];
 }
 
 interface UnitSeed {
@@ -25,85 +45,21 @@ interface BuildingSeed {
   units: UnitSeed[];
 }
 
-const BUILDING_SEEDS: BuildingSeed[] = [
-  {
-    buildingId: 'building-storgata-12',
-    coord: { lat: 59.9139, lon: 10.7522 },
-    units: [
-      {
-        unitKey: 'h0101',
-        adresse: 'Storgata 12, H0101',
-        beboere: [{ navn: 'Anders Hansen' }],
-        tidligereProdukter: [{ navn: 'Fiber 500/500', aktivFra: '2023-01-15' }],
-      },
-      {
-        unitKey: 'h0102',
-        adresse: 'Storgata 12, H0102',
-        beboere: [{ navn: 'Bjørn Olsen' }],
-        tidligereProdukter: [],
-      },
-      {
-        unitKey: 'h0201',
-        adresse: 'Storgata 12, H0201',
-        beboere: [{ navn: 'Christina Berg' }],
-        tidligereProdukter: [
-          { navn: 'Fiber 250/250', aktivFra: '2021-06-01', aktivTil: '2024-03-31' },
-        ],
-      },
-    ],
-  },
-  {
-    buildingId: 'building-kirkeveien-45',
-    coord: { lat: 59.9281, lon: 10.7145 },
-    units: [
-      {
-        unitKey: 'h0101',
-        adresse: 'Kirkeveien 45, H0101',
-        beboere: [{ navn: 'David Larsen' }],
-        tidligereProdukter: [{ navn: 'Mobil M', aktivFra: '2024-02-01' }],
-      },
-      {
-        unitKey: 'h0102',
-        adresse: 'Kirkeveien 45, H0102',
-        beboere: [{ navn: 'Eva Nilsen' }],
-        tidligereProdukter: [],
-      },
-    ],
-  },
-  {
-    buildingId: 'building-ekebergveien-14',
-    coord: { lat: 59.8998, lon: 10.7703 },
-    units: [
-      {
-        unitKey: 'enhet-1',
-        adresse: 'Ekebergveien 14, Enhet 1',
-        beboere: [{ navn: 'Frank Johansen' }],
-        tidligereProdukter: [{ navn: 'Fiber 1G/1G', aktivFra: '2022-09-01' }],
-      },
-      {
-        unitKey: 'enhet-2',
-        adresse: 'Ekebergveien 14, Enhet 2',
-        beboere: [{ navn: 'Grete Andersen' }],
-        tidligereProdukter: [],
-      },
-    ],
-  },
-  {
-    buildingId: 'building-grunerlokka-8',
-    coord: { lat: 59.9234, lon: 10.7589 },
-    units: [
-      {
-        unitKey: 'h0301',
-        adresse: 'Thorvald Meyers gate 8, H0301',
-        beboere: [{ navn: 'Hans Pedersen' }],
-        tidligereProdukter: [
-          { navn: 'Fiber 500/500', aktivFra: '2020-01-01', aktivTil: '2023-12-31' },
-          { navn: 'Mobil S', aktivFra: '2024-01-01' },
-        ],
-      },
-    ],
-  },
-];
+const catalog = catalogJson as CatalogBuilding[];
+
+const BUILDING_SEEDS: BuildingSeed[] = catalog.map((building) => {
+  const street = building.address.split(',')[0].trim();
+  return {
+    buildingId: building.buildingId,
+    coord: { lat: building.coord.lat, lon: building.coord.lng },
+    units: building.units.map((unit) => ({
+      unitKey: unitKeyFromUnitNumber(unit.unitNumber),
+      adresse: `${street}, ${unit.unitNumber}`,
+      beboere: [{ navn: unit.resident }],
+      tidligereProdukter: [],
+    })),
+  };
+});
 
 function buildRegistry(): Map<string, Location> {
   const byFarid = new Map<string, Location>();
@@ -138,7 +94,7 @@ export const MOCK_SAMPLE_FARID = mintFarid(MOCK_SAMPLE_BUILDING_ID, 'h0101');
 export const MOCK_SAMPLE_FARID_2 = mintFarid(MOCK_SAMPLE_BUILDING_ID, 'h0102');
 export const MOCK_SAMPLE_FARID_3 = mintFarid(MOCK_SAMPLE_BUILDING_ID, 'h0201');
 export const MOCK_SAMPLE_FARID_OTHER_BUILDING = mintFarid('building-kirkeveien-45', 'h0101');
-export const MOCK_SAMPLE_FARID_EKEBERG = mintFarid('building-ekebergveien-14', 'enhet-1');
+export const MOCK_SAMPLE_FARID_EKEBERG = mintFarid('building-ekebergveien-14', 'h0101');
 /** Antall boenheter i Storgata 12-seed. */
 export const MOCK_SAMPLE_BUILDING_UNIT_COUNT = 3;
 
