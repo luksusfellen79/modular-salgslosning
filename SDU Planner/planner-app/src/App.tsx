@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { fetchSellers, fetchRounds, createRound, updateRoundStatus, updateUnitStatus, createSeller } from './lib/salesCore';
 import { fetchResidents } from './lib/integrationLayer';
 import { BUILDINGS, Resident, Round, RoundStatus, Seller, UnitVisitStatus } from './lib/types';
+import { RoundRouteView } from './components/RoundRouteView';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
@@ -394,6 +395,11 @@ function RoundDetail({ round: initialRound, onBack, onUpdated }: RoundDetailProp
           )}
         </div>
       )}
+
+      {/* Optimalisert kjøre-/gårute */}
+      <div style={{ marginBottom: 24 }}>
+        <RoundRouteView round={round} />
+      </div>
 
       {/* Units list */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

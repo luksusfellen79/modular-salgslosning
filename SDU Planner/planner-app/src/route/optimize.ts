@@ -2,6 +2,8 @@
 
 import { Coord, haversineKm } from './distance';
 
+export type { Coord } from './distance';
+
 export interface Stop {
   buildingId: string;
   coord: Coord;
