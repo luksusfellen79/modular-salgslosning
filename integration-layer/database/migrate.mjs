@@ -35,6 +35,10 @@ const HASH_1234 = '$2b$10$esUnVUicJrDHZANds/A7J.eNbtiN55TjYmrdhvxkRJhP.m9qpE1du'
 
 const SCHEMAS = ['hub.sql', 'sales_core.sql', 'sdu.sql', 'mdu.sql', 'cases.sql'];
 
+const MIGRATIONS = [
+  '001_sdu_besok_bygg_id.sql',
+];
+
 async function runMigration() {
   console.log('=== Modulær Salgsløsning — Database Migration ===\n');
   console.log(`Kobler til: ${DATABASE_URL.replace(/:([^:@]+)@/, ':***@')}`);
@@ -74,6 +78,21 @@ async function runMigration() {
         await client.end();
         process.exit(1);
       }
+    }
+  }
+
+  console.log('\nKjører inkrementelle migrasjoner...');
+  for (const file of MIGRATIONS) {
+    const filePath = join(__dirname, 'migrations', file);
+    console.log(`Kjører ${file}...`);
+    const sql = readFileSync(filePath, 'utf8');
+    try {
+      await client.query(sql);
+      console.log(`  ✓ ${file} OK`);
+    } catch (err) {
+      console.error(`  ✗ ${file} feilet:`, err.message);
+      await client.end();
+      process.exit(1);
     }
   }
 
