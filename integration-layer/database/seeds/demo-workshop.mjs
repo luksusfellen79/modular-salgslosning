@@ -9,10 +9,19 @@
  */
 
 import { execSync } from 'child_process';
+import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+/** Delt bygg-katalog (samme kilde som IL mockLocationAdapter). */
+const BUILDINGS_CATALOG = JSON.parse(
+  readFileSync(new URL('../../src/data/buildings-catalog.json', import.meta.url), 'utf8'),
+);
+const BUILDING_BY_ID = new Map(
+  BUILDINGS_CATALOG.map((b) => [b.buildingId, b]),
+);
 
 try {
   await import('pg');
@@ -41,8 +50,9 @@ const DEMO = {
     erik: 'b1000006-0000-4000-8000-000000000006',
   },
   rounds: {
-    majorstuen: 'c1000001-0000-4000-8000-000000000001',
-    grunerlokka: 'c1000002-0000-4000-8000-000000000002',
+    oslo: 'c1000003-0000-4000-8000-000000000003',
+    bergen: 'c1000004-0000-4000-8000-000000000004',
+    karmoy: 'c1000005-0000-4000-8000-000000000005',
   },
   deals: {
     solberg: 'd1000001-0000-4000-8000-000000000001',
@@ -70,29 +80,55 @@ const HUB_USERS = [
 
 const SDU_SELLER_IDS = [DEMO.users.lars, DEMO.users.marte];
 
-/** Samme unitId-format som Integration Layer FiberAdapter */
-function fiberAdapterUnits(buildingId, floors, unitsPerFloor, format = 'H') {
-  const units = [];
-  const total = floors * unitsPerFloor;
-  for (let i = 0; i < total; i++) {
-    const floor = format === 'H' ? Math.floor(i / unitsPerFloor) + 1 : 1;
-    const unitInFloor = (i % unitsPerFloor) + 1;
-    const unitNumber = format === 'H'
-      ? `H${String(floor).padStart(2, '0')}${String(unitInFloor).padStart(2, '0')}`
-      : `Enhet ${i + 1}`;
-    const unitId = `${buildingId}-${unitNumber.toLowerCase().replace(/\s/g, '-')}`;
-    units.push({ unitId, unitNumber, floor, index: i });
-  }
-  return units;
-}
+/** Fast tidspunkt-base — idempotent på tvers av re-kjøringer (ingen Date.now / Math.random). */
+const DEMO_VISIT_T0 = Date.parse('2026-07-21T12:00:00.000Z');
 
-const IL_RESIDENT_NAMES = [
-  'Anders Hansen', 'Bjørn Olsen', 'Christina Berg', 'David Larsen',
-  'Eva Nilsen', 'Frank Johansen', 'Grete Andersen', 'Hans Pedersen',
-  'Ingrid Kristiansen', 'Jan Eriksen', 'Kari Halvorsen', 'Lars Thomsen',
-  'Maria Martinsen', 'Nils Sørensen', 'Olivia Bakken', 'Per Haugen',
-  'Ragna Lie', 'Sigrid Moen', 'Tore Lund', 'Una Dahl',
-  'Vegard Holm', 'Wenche Berg', 'Xavier Amundsen', 'Yvonne Strand',
+const AREA_ROUNDS = [
+  {
+    key: 'oslo',
+    id: DEMO.rounds.oslo,
+    name: 'Oslo sentrum',
+    sellerId: DEMO.users.lars,
+    leaderId: DEMO.users.tor,
+    startBuildingId: 'building-storgata-12',
+    buildingIds: [
+      'building-storgata-12',
+      'building-grunerlokka-8',
+      'building-toyengata-22',
+      'building-sagene-5',
+      'building-kirkeveien-45',
+      'building-ekebergveien-14',
+    ],
+  },
+  {
+    key: 'bergen',
+    id: DEMO.rounds.bergen,
+    name: 'Bergen vest',
+    sellerId: DEMO.users.marte,
+    leaderId: DEMO.users.tor,
+    startBuildingId: 'building-bryggen-3',
+    buildingIds: [
+      'building-bryggen-3',
+      'building-nordnes-17',
+      'building-mohlenpris-9',
+      'building-sandviken-30',
+      'building-landaas-12',
+    ],
+  },
+  {
+    key: 'karmoy',
+    id: DEMO.rounds.karmoy,
+    name: 'Karmøy',
+    sellerId: DEMO.users.lars,
+    leaderId: DEMO.users.tor,
+    startBuildingId: 'building-kopervik-4',
+    buildingIds: [
+      'building-kopervik-4',
+      'building-avaldsnes-11',
+      'building-skudeneshavn-6',
+      'building-aakra-19',
+    ],
+  },
 ];
 
 function encodeUnitNotater(address, unitId, note) {
@@ -105,106 +141,72 @@ function encodeUnitNotater(address, unitId, note) {
   return lines.length ? lines.join('\n') : null;
 }
 
-function majorstuenUnits() {
-  const buildingId = 'building-storgata-12';
-  const ilUnits = fiberAdapterUnits(buildingId, 6, 4);
-  const units = [];
-
-  for (const u of ilUnits) {
-    const i = u.index + 1;
-    const residentName = IL_RESIDENT_NAMES[u.index % IL_RESIDENT_NAMES.length];
-    const address = `Storgata 12, ${u.unitNumber}`;
-    let utfall = 'ikke-besøkt';
-    let produktId = null;
-    let notater = null;
-    let tidspunkt = null;
-
-    if (i <= 8) {
-      utfall = 'ikke-besøkt';
-    } else if (i <= 14) {
-      utfall = i % 3 === 0 ? 'ikke-hjemme' : 'besøkt';
-      tidspunkt = new Date(Date.now() - (24 - i) * 3600_000).toISOString();
-      notater = encodeUnitNotater(
-        address,
-        u.unitId,
-        utfall === 'besøkt' ? 'Presentert tilbud, vurderer' : 'Ingen svar på dørkladder',
-      );
-    } else if (i <= 20) {
-      utfall = 'solgt';
-      tidspunkt = new Date(Date.now() - (24 - i) * 7200_000).toISOString();
-      produktId = 'sdu-fiber-500';
-      notater = encodeUnitNotater(
-        address,
-        u.unitId,
-        i % 2 === 0 ? 'Solgt: Fiber 500, Mobil M' : 'Solgt: Fiber 500',
-      );
-    } else {
-      utfall = i % 2 === 0 ? 'ikke-interessert' : 'besøkt';
-      tidspunkt = new Date(Date.now() - i * 1800_000).toISOString();
-      notater = encodeUnitNotater(
-        address,
-        u.unitId,
-        utfall === 'ikke-interessert' ? 'Ikke interessert i bytte' : 'Vil tenke på det',
-      );
-    }
-
-    units.push({
-      unitId: u.unitId,
-      etasje: u.floor,
-      residentName,
-      address,
-      utfall,
-      produktId,
-      notater,
-      tidspunkt,
-    });
-  }
-  return units;
+/** Samme unitId-format som IL FiberAdapter / mockLocationAdapter. */
+function catalogUnitId(buildingId, unitNumber) {
+  return `${buildingId}-${unitNumber.toLowerCase().replace(/\s/g, '-')}`;
 }
 
-function grunerlokkaUnits() {
-  const buildingId = 'building-kirkeveien-45';
-  const ilUnits = fiberAdapterUnits(buildingId, 3, 6);
-  const units = [];
+/**
+ * Round-robin på tvers av bygg slik at startbygg får enheter i alle utfalls-bånd
+ * (ikke bare «ikke-besøkt»-sonen hvis startbygg er først i lista).
+ */
+function interleaveBuildingUnitLists(lists) {
+  const result = [];
+  const maxLen = Math.max(0, ...lists.map((l) => l.length));
+  for (let i = 0; i < maxLen; i++) {
+    for (const list of lists) {
+      if (i < list.length) result.push(list[i]);
+    }
+  }
+  return result;
+}
 
-  for (const u of ilUnits) {
-    const i = u.index + 1;
-    const residentName = IL_RESIDENT_NAMES[(u.index + 8) % IL_RESIDENT_NAMES.length];
-    const address = `Kirkeveien 45, ${u.unitNumber}`;
+/** Katalog-drevne enheter for en områderunde med deterministisk utfall-variasjon. */
+function areaRoundUnits(buildingIds) {
+  const perBuilding = buildingIds.map((buildingId) => {
+    const building = BUILDING_BY_ID.get(buildingId);
+    if (!building) throw new Error(`Ukjent buildingId i katalog: ${buildingId}`);
+    const street = building.address.split(',')[0].trim();
+    return building.units.map((unit) => ({
+      unitId: catalogUnitId(buildingId, unit.unitNumber),
+      buildingId,
+      etasje: unit.floor,
+      residentName: unit.resident,
+      address: `${street}, ${unit.unitNumber}`,
+    }));
+  });
+
+  const flat = interleaveBuildingUnitLists(perBuilding);
+  const n = flat.length;
+  const pendingEnd = Math.floor(n * 0.40);
+  const visitedEnd = pendingEnd + Math.floor(n * 0.35);
+
+  return flat.map((base, index) => {
+    const i = index + 1; // løpenr 1-basert
     let utfall = 'ikke-besøkt';
     let produktId = null;
     let notater = null;
     let tidspunkt = null;
 
-    if (i <= 14) {
+    if (index < pendingEnd) {
       utfall = 'ikke-besøkt';
-    } else if (i === 15) {
+    } else if (index < visitedEnd) {
+      utfall = i % 2 === 0 ? 'ikke-hjemme' : 'besøkt';
+      tidspunkt = new Date(DEMO_VISIT_T0 - i * 3600_000).toISOString();
+      notater = encodeUnitNotater(
+        base.address,
+        base.unitId,
+        utfall === 'besøkt' ? 'Presentert tilbud, vurderer' : 'Ingen svar på dørklokke',
+      );
+    } else {
       utfall = 'solgt';
       produktId = 'sdu-fiber-500';
-      notater = encodeUnitNotater(address, u.unitId, 'Solgt: Fiber 500, Mobil M');
-      tidspunkt = new Date(Date.now() - 4 * 3600_000).toISOString();
-    } else if (i === 16) {
-      utfall = 'besøkt';
-      notater = encodeUnitNotater(address, u.unitId, 'Booket oppfølging neste uke');
-      tidspunkt = new Date(Date.now() - 2 * 3600_000).toISOString();
-    } else {
-      utfall = 'ikke-hjemme';
-      tidspunkt = new Date(Date.now() - 3600_000).toISOString();
-      notater = encodeUnitNotater(address, u.unitId, null);
+      tidspunkt = new Date(DEMO_VISIT_T0 - i * 7200_000).toISOString();
+      notater = encodeUnitNotater(base.address, base.unitId, 'Solgt: Fiber 500');
     }
 
-    units.push({
-      unitId: u.unitId,
-      etasje: u.floor,
-      residentName,
-      address,
-      utfall,
-      produktId,
-      notater,
-      tidspunkt,
-    });
-  }
-  return units;
+    return { ...base, utfall, produktId, notater, tidspunkt };
+  });
 }
 
 const PIN_HASHES = {
@@ -258,11 +260,12 @@ async function seedSduRound(client, round, units) {
 
   for (const u of units) {
     await client.query(`
-      INSERT INTO sales_core.sdu_besøk (runde_id, leilighet_id, etasje, person_id, utfall, produkt_id, notater, tidspunkt)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      INSERT INTO sales_core.sdu_besøk (runde_id, leilighet_id, bygg_id, etasje, person_id, utfall, produkt_id, notater, tidspunkt)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
     `, [
       round.id,
       u.unitId,
+      u.buildingId,
       u.etasje ?? null,
       u.residentName ?? null,
       u.utfall,
@@ -275,23 +278,32 @@ async function seedSduRound(client, round, units) {
 
 async function seedSduRounds(client) {
   console.log('→ SDU-runder (sales_core.sdu_runder + sdu_besøk)');
-  await seedSduRound(client, {
-    id: DEMO.rounds.majorstuen,
-    name: 'Majorstuen Nord',
-    buildingId: 'building-storgata-12',
-    sellerId: DEMO.users.lars,
-    leaderId: DEMO.users.tor,
-  }, majorstuenUnits());
 
-  await seedSduRound(client, {
-    id: DEMO.rounds.grunerlokka,
-    name: 'Grünerløkka Sør',
-    buildingId: 'building-kirkeveien-45',
-    sellerId: DEMO.users.marte,
-    leaderId: DEMO.users.tor,
-  }, grunerlokkaUnits());
+  // Rydd gamle enkeltbygg-runder (CASCADE fjerner besøk)
+  await client.query(`
+    DELETE FROM sales_core.sdu_runder
+    WHERE runde_id IN (
+      'c1000001-0000-4000-8000-000000000001',
+      'c1000002-0000-4000-8000-000000000002'
+    )
+  `);
 
-  console.log('  ✓ Majorstuen Nord (24 enheter, Storgata 12) + Grünerløkka Sør (18 enheter, Kirkeveien 45)');
+  const summaries = [];
+  for (const area of AREA_ROUNDS) {
+    const units = areaRoundUnits(area.buildingIds);
+    await seedSduRound(client, {
+      id: area.id,
+      name: area.name,
+      buildingId: area.startBuildingId,
+      sellerId: area.sellerId,
+      leaderId: area.leaderId,
+    }, units);
+    summaries.push(
+      `${area.name} (${area.buildingIds.length} bygg, ${units.length} enheter)`,
+    );
+  }
+
+  console.log(`  ✓ ${summaries.join(' | ')}`);
 }
 
 async function seedMduDeals(client) {
@@ -526,13 +538,13 @@ async function printSummary(client) {
       (SELECT COUNT(*)::int FROM sales_core.mdu_deals WHERE deal_id = ANY($2::uuid[])) AS deals,
       (SELECT COUNT(*)::int FROM cases.saker WHERE saksnummer LIKE 'CAS-2026-%') AS cases
   `, [
-    [DEMO.rounds.majorstuen, DEMO.rounds.grunerlokka],
+    [DEMO.rounds.oslo, DEMO.rounds.bergen, DEMO.rounds.karmoy],
     [DEMO.deals.solberg, DEMO.deals.berglia, DEMO.deals.nordaasen, DEMO.deals.havnekvartalet],
   ]);
   const r = counts.rows[0];
   console.log('\n── Oppsummering ──');
   console.log(`  Hub-brukere:  ${r.hub_users}/6`);
-  console.log(`  SDU-runder:   ${r.rounds}/2`);
+  console.log(`  SDU-runder:   ${r.rounds}/3 (Oslo / Bergen / Karmøy)`);
   console.log(`  MDU-deals:    ${r.deals}/4`);
   console.log(`  Cases:        ${r.cases}/5`);
 }
