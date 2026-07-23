@@ -13,14 +13,14 @@ koblet via Integration Layer. Prototypen kjører på Railway.
 
 | Modul               | Status     | Beskrivelse                                      |
 |---------------------|------------|--------------------------------------------------|
-| Integration Layer   | ✅ Live    | Master datahub — adapters, EventBus, JWT-mw      |
+| Integration Layer   | ✅ Live    | Master datahub — adapters, EventBus, JWT-mw, farid location seam |
 | PostgreSQL          | ✅ Live    | Railway-hosted, 4 schemas: hub/sales_core/sdu/mdu|
 | Hub                 | ✅ Live    | Innlogging med bcrypt PIN → JWT, pg-sessions      |
 | Sales Core          | ✅ Live    | MDU pipeline + SDU runder/besøk → PostgreSQL     |
 | MDU CRM             | ✅ Live    | Kanban-pipeline (mdu-selger)                     |
 | MDU Leder           | ✅ Live    | War Room + oversikt (mdu-leder)                  |
 | SDU CRM             | ✅ Live    | Feltsalg dør-til-dør (sdu-selger)               |
-| SDU Planner         | ✅ Live    | Runderplanlegging (sdu-leder)                    |
+| SDU Planner         | ✅ Live    | Runderplanlegging + ruteoptimalisering (TSP) + kart (sdu-leder) |
 | SDU Incentive Mgr   | ✅ Live    | Bonusstyring                                     |
 | KAS Core mock       | ⚠️ Legacy  | Beholdes for bakoverkompatibilitet               |
 
@@ -31,6 +31,31 @@ koblet via Integration Layer. Prototypen kjører på Railway.
 - KafkaEventBus (InMemoryEventBus brukes nå)
 - Azure AD / Telenor SSO
 - Contract generation (Signicat + BankID)
+
+### Farid-sømmen & ruteplanlegging (juli 2026)
+
+farid = Telenors opake unik-ID per boenhet, kanonisk join-key. Koordinat resolves på
+byggnivå (boenhet arver byggets coord). Prinsipp: High Touch sender farids + kampanjekontekst,
+IL eier dataene — payloaden blir ikke en andre sannhetskilde.
+
+**IL — nye endepunkter** (`integration-layer/src/routes/`, via LocationAdapter):
+- `GET /locations/:farid` — enkelt boenhetsoppslag
+- `POST /locations/batch` — resolve farid-liste gruppert per bygg (High Touch-pathen)
+- `GET /buildings/:buildingId/locations` — alle boenheter + byggets coord
+
+Domenemodell: `src/domain/location.ts`. Mock-adapter seeder 4 bygg med coords;
+byttes ut med ekte Telenor-adapter senere.
+
+**SDU Planner — ruteoptimalisering** (`planner-app/src/`):
+- `route/distance.ts` — haversine
+- `route/optimize.ts` — deterministisk TSP (nearest-neighbor + 2-opt), rundtur start→stopp→start.
+  IKKE AI — AI reserveres for senere territorie-tildeling.
+- `components/RouteMap.tsx` — Leaflet + Kartverket WMTS (topo)
+- `components/RoundRouteView.tsx` — limet: runde → unike bygg → coords fra IL → optimizeRoute → kart.
+  Start = første bygg (overstyrbart).
+
+**Deploy-merknad:** IL auto-deployer IKKE ved push. Redeploy manuelt:
+`railway up --service integration-layer --environment production`
 
 ---
 

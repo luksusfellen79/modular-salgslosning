@@ -83,7 +83,8 @@ DATABASE_URL env-var satt på: salgshub, sales-core, case-service
 - **Sales Core (unntak):** Root directory i Railway er satt til `/` (ikke `Sales Core`)
 - **Sales Core deploy:** Kjør `railway up` fra inne i `modular-salgslosning/Sales Core/`-mappen
 - **Sales Core GitHub-trigger:** Auto-deploy fra GitHub fungerer IKKE for Sales Core — manuell `railway up` kreves ved endringer
-
+- **Integration Layer:** Har «Auto deploy unavailable» — push redeployer den ikke.
+  Kjør manuelt: `railway up --service integration-layer --environment production`
 ---
 
 ## Database (PostgreSQL på Railway) — LIVE
@@ -155,11 +156,65 @@ GET  /adapters/customer/buildings/:id/customers         — kunder per bygg (MDU
 GET  /adapters/customer/persons/:id/sales-context       — churn, win-back, potensial
 GET  /adapters/customer/win-back                        — win-back-kandidater
 
+# Location / farid (boenhet — kanonisk join-key)
+GET  /locations/:farid                                  — enkelt boenhetsoppslag
+POST /locations/batch                                   — resolve farid-liste → gruppert per bygg (High Touch)
+GET  /buildings/:buildingId/locations                   — alle boenheter + byggets coord
+
 # EventBus
 POST /events/publish                        — publiser hendelse { topic, payload, source }
 GET  /events/topics                         — alle gyldige topic-navn
 GET  /events/log?topic=sale.created         — siste hendelser (kun dev)
 ```
+
+---
+
+## Farid-sømmen & ruteplanlegging
+
+**farid** = Telenors opake unik-ID per boenhet (dwelling unit). Behandle som opaque string —
+ingen parsing. Kanonisk join-key. **coord** ligger på **byggnivå** (`buildingId`);
+boenhet arver byggets koordinat.
+
+**Prinsipp:** High Touch sender farids + kampanjekontekst. IL eier dataene —
+payloaden blir ikke en andre sannhetskilde.
+
+### Tre separate compute-problemer (hold dem adskilt)
+
+1. **Geocoding** — deterministisk, IL/Kartverket. Kartverket brukes **offline** til å bygge
+   master-adressetabellen, IKKE kalt runtime (IL holder allerede coords per bygg).
+2. **Territorie-tildeling** — fuzzy/AI-kandidat, hører hjemme i Planner (ikke bygget ennå).
+3. **Rute-sekvensering** — deterministisk TSP i Planner. **ALDRI AI her.**
+
+### LocationAdapter (Integration Layer)
+
+```
+integration-layer/src/
+  domain/location.ts              — Coord, Beboer, TidligereProdukt, Location
+  adapters/locationAdapter.ts     — getByFarid / listByBuilding / resolveMany
+  adapters/mockLocationAdapter.ts — seed (4 bygg med coords)
+  adapters/locationAdapterFactory.ts — bytt mock → ekte Telenor-adapter her
+  routes/locations.ts             — GET /locations/:farid, POST /locations/batch
+  routes/buildings.ts             — GET /buildings/:buildingId/locations
+```
+
+- Bridge i Planner-glue på **buildingId** (runde → unike bygg → coords).
+- `POST /locations/batch` er for **High Touch-pathen** (farid-liste inn).
+
+### SDU Planner — ruteoptimalisering & kart
+
+```
+SDU Planner/planner-app/src/
+  route/distance.ts               — haversineKm
+  route/optimize.ts               — nearest-neighbor + 2-opt, rundtur start→stopp→start
+  components/RouteMap.tsx         — Leaflet + Kartverket WMTS (topo)
+  components/RoundRouteView.tsx   — lim: Round → resolveStops → optimizeRoute → kart
+  lib/integrationLayer.ts         — fetchBuildingCoord, resolveStops
+```
+
+- Startpunkt default = første bygg med coord (overstyrbart i UI).
+- **Leaflet-gotcha:** default marker-ikon brekker under Vite-bundling → bruk `L.divIcon`.
+- **Kartverket WMTS:** `https://cache.kartverket.no/v1/wmts/1.0.0/topo/default/webmercator/{z}/{y}/{x}.png`
+  (EPSG:3857), attribution `© Kartverket`.
 
 ---
 
@@ -310,10 +365,10 @@ Session distribueres via `?hub_session=` URL-parameter fra Hub til alle micro-ap
 
 ### SDU-flyt (feltsalg, dør-til-dør)
 1. Salgsleder oppretter runder i **SDU Planner** → lagres i `sales_core.sdu_runder`
-2. Selger åpner **SDU CRM** → velger seg selv → ser runden → besøker enheter
-3. Besøksutfall logges i `sales_core.sdu_besøk`
-4. Incentiver og bonuser styres i **SDU Incentive Manager** → lagres i `sdu.bonuser`
-
+2. Planner henter byggcoords fra IL (`GET /buildings/:id/locations`), kjører `optimizeRoute`, viser kart
+3. Selger åpner **SDU CRM** → velger seg selv → ser runden → besøker enheter
+4. Besøksutfall logges i `sales_core.sdu_besøk`
+5. Incentiver og bonuser styres i **SDU Incentive Manager** → lagres i `sdu.bonuser`
 ### MDU-flyt (boligselskap/eiendom)
 MDU CRM → pipeline/kanban (`sales_core.mdu_deals`) → tilbud (`sales_core.tilbud`) → kundeportal (`mdu.kunder`)
 
@@ -352,6 +407,11 @@ CS oppretter sak → tildeles gruppe → løses (av teknisk gruppe eller CS) →
 → Legg til i `AdapterRegistry`
 → Eksisterende konsumenter skal ikke trenge å endres
 
+### Location / farid-oppslag
+→ Kall `/locations/:farid`, `/locations/batch` eller `/buildings/:id/locations`
+→ Bytt mock via `locationAdapterFactory.ts` — ikke hardkod adapter i ruter
+→ farid er opaque; bridge Planner på `buildingId`, High Touch på farid-batch
+
 ### Ny modul som trenger kundedata
 → Kall `/adapters/customer/...` — aldri direkte mot `hub.brukere` eller KAS Core
 
@@ -374,6 +434,11 @@ CS oppretter sak → tildeles gruppe → løses (av teknisk gruppe eller CS) →
 → `KAFKA_ENABLED=true` + KafkaJS er klart
 → I dev/prototype: KafkaStub brukes (in-memory event bus)
 
+### Ruteoptimalisering i Planner
+→ Bruk `optimizeRoute` (deterministisk TSP) — aldri AI for sekvensering
+→ Kart: `RouteMap` med `L.divIcon` + Kartverket WMTS
+→ Lim: `RoundRouteView` / `resolveStops` — ikke kall `/locations/batch` fra Planner-glue
+
 ---
 
 ## Neste migreringssteg (ikke gjort ennå)
@@ -387,6 +452,8 @@ CS oppretter sak → tildeles gruppe → løses (av teknisk gruppe eller CS) →
 - [ ] KafkaEventBus — bytt InMemoryEventBus mot KafkaJS når `KAFKA_ENABLED=true` på Nova
 - [ ] Contract generation (Signicat + BankID)
 - [ ] Azure AD / Telenor SSO — JWT er allerede Azure AD-kompatibelt
+- [ ] Ekte Telenor LocationAdapter (bytt ut mock via factory)
+- [ ] Territorie-tildeling i Planner (AI-kandidat — separat fra TSP)
 
 ---
 
