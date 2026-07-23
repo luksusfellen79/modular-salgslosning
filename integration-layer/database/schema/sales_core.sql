@@ -94,6 +94,7 @@ CREATE TABLE sales_core.sdu_besøk (
   besøk_id        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   runde_id        UUID NOT NULL REFERENCES sales_core.sdu_runder(runde_id) ON DELETE CASCADE,
   leilighet_id    TEXT NOT NULL,
+  bygg_id         TEXT,                 -- per-besøk bygg (nullable for legacy-rader); rundens bygg_id = startbygg
   etasje          INTEGER,
   person_id       TEXT,
   utfall          TEXT NOT NULL DEFAULT 'ikke-besøkt',
