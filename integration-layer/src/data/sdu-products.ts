@@ -5,6 +5,7 @@ import { Incentive, SDUProduct } from '../types/sdu-catalog.js';
 
 const Q3_END = '2026-09-30';
 const Q2_END = '2026-06-30';
+const Q4_END = '2026-12-31';
 const NO_INCENTIVES: Incentive[] = [];
 
 export const SDU_PRODUCTS_SEED: SDUProduct[] = [
@@ -38,7 +39,7 @@ export const SDU_PRODUCTS_SEED: SDUProduct[] = [
         value: 6,
         currency: 'months',
         validFrom: '2026-04-01',
-        validUntil: Q2_END,
+        validUntil: Q4_END,
         visibleToSeller: true,
       },
       {
@@ -49,7 +50,7 @@ export const SDU_PRODUCTS_SEED: SDUProduct[] = [
         value: 200,
         currency: 'NOK',
         validFrom: '2026-04-01',
-        validUntil: Q2_END,
+        validUntil: Q4_END,
         visibleToSeller: true,
       },
     ],
@@ -148,7 +149,19 @@ export const SDU_PRODUCTS_SEED: SDUProduct[] = [
     costPrice: 150,
     commissionRate: 7,
     specs: { data: 'Ubegrenset', hastighet: '5G maks', roaming: 'EU inkludert' },
-    incentives: [],
+    incentives: [
+      {
+        id: 'inc-mobilfri-bonus',
+        name: 'Selgerbonus Mobil Fri+',
+        description: '150 kr ekstra per nytt abonnement',
+        type: 'bonus_per_sale',
+        value: 150,
+        currency: 'NOK',
+        validFrom: '2026-04-01',
+        validUntil: Q4_END,
+        visibleToSeller: true,
+      },
+    ],
     isActive: true,
   },
   {

@@ -37,6 +37,7 @@ const SCHEMAS = ['hub.sql', 'sales_core.sql', 'sdu.sql', 'mdu.sql', 'cases.sql']
 
 const MIGRATIONS = [
   '001_sdu_besok_bygg_id.sql',
+  '002_beregnede_bonuser.sql',
 ];
 
 async function runMigration() {

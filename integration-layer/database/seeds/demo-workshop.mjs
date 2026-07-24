@@ -564,6 +564,58 @@ async function seedCases(client) {
   console.log(`  ✓ ${cases.length} saker med full hendelseslogg (created→...→løst/eskalert)`);
 }
 
+async function seedBonuser(client) {
+  console.log('→ Bonuser (sales_core.beregnede_bonuser)');
+  const t0 = DEMO_VISIT_T0; // ms
+  const FIBER = { productId: 'sdu-fiber-500', productName: 'Fiber 500/500',
+    incentiveId: 'inc-fiber500-bonus', incentiveName: 'Selgerbonus Fiber 500', bonusKr: 200 };
+  const MOBIL = { productId: 'sdu-mobil-fri', productName: 'Mobil Fri+',
+    incentiveId: 'inc-mobilfri-bonus', incentiveName: 'Selgerbonus Mobil Fri+', bonusKr: 150 };
+
+  const rows = [
+    { id: 'f1000001-0000-4000-8000-000000000001', selger_id: DEMO.users.lars,
+      selger_navn: 'Lars', enhet_id: 'building-storgata-12-01', bygg_id: 'building-storgata-12',
+      runde_id: DEMO.rounds.oslo, linjer: [FIBER] },
+    { id: 'f1000002-0000-4000-8000-000000000002', selger_id: DEMO.users.marte,
+      selger_navn: 'Marte', enhet_id: 'building-grunerlokka-8-03', bygg_id: 'building-grunerlokka-8',
+      runde_id: DEMO.rounds.oslo, linjer: [FIBER, MOBIL] },
+    { id: 'f1000003-0000-4000-8000-000000000003', selger_id: DEMO.users.lars,
+      selger_navn: 'Lars', enhet_id: 'building-bryggen-3-02', bygg_id: 'building-bryggen-3',
+      runde_id: DEMO.rounds.bergen, linjer: [FIBER] },
+    { id: 'f1000004-0000-4000-8000-000000000004', selger_id: DEMO.users.marte,
+      selger_navn: 'Marte', enhet_id: 'building-nordnes-17-05', bygg_id: 'building-nordnes-17',
+      runde_id: DEMO.rounds.bergen, linjer: [FIBER] },
+    { id: 'f1000005-0000-4000-8000-000000000005', selger_id: DEMO.users.lars,
+      selger_navn: 'Lars', enhet_id: 'building-kopervik-4-01', bygg_id: 'building-kopervik-4',
+      runde_id: DEMO.rounds.karmoy, linjer: [FIBER] },
+  ];
+
+  const ids = rows.map((r) => r.id);
+  await client.query(
+    `DELETE FROM sales_core.beregnede_bonuser WHERE bonus_id = ANY($1::uuid[])`, [ids]);
+
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    const total = r.linjer.reduce((s, l) => s + l.bonusKr, 0);
+    const solgte = r.linjer.map((l) => ({ productId: l.productId, productName: l.productName }));
+    const opprettet = new Date(t0 + i * 60000).toISOString();
+    await client.query(
+      `INSERT INTO sales_core.beregnede_bonuser
+         (bonus_id, opprettet, selger_id, selger_navn, enhet_id, bygg_id, runde_id,
+          utfall, solgte_produkter, linjer, total_bonus_kr, periode_maaned)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,'sold',$8::jsonb,$9::jsonb,$10,'2026-07')
+       ON CONFLICT (bonus_id) DO UPDATE SET
+         opprettet = EXCLUDED.opprettet, selger_id = EXCLUDED.selger_id,
+         selger_navn = EXCLUDED.selger_navn, enhet_id = EXCLUDED.enhet_id,
+         bygg_id = EXCLUDED.bygg_id, runde_id = EXCLUDED.runde_id,
+         solgte_produkter = EXCLUDED.solgte_produkter, linjer = EXCLUDED.linjer,
+         total_bonus_kr = EXCLUDED.total_bonus_kr, periode_maaned = EXCLUDED.periode_maaned`,
+      [r.id, opprettet, r.selger_id, r.selger_navn, r.enhet_id, r.bygg_id, r.runde_id,
+       JSON.stringify(solgte), JSON.stringify(r.linjer), total]);
+  }
+  console.log(`  ✓ ${rows.length} beregnede bonuser`);
+}
+
 async function printSummary(client) {
   const counts = await client.query(`
     SELECT
@@ -572,11 +624,19 @@ async function printSummary(client) {
       )) AS hub_users,
       (SELECT COUNT(*)::int FROM sales_core.sdu_runder WHERE runde_id = ANY($1::uuid[])) AS rounds,
       (SELECT COUNT(*)::int FROM sales_core.mdu_deals WHERE deal_id = ANY($2::uuid[])) AS deals,
-      (SELECT COUNT(*)::int FROM cases.saker WHERE saksnummer LIKE 'CAS-2026-%') AS cases
+      (SELECT COUNT(*)::int FROM cases.saker WHERE saksnummer LIKE 'CAS-2026-%') AS cases,
+      (SELECT COUNT(*)::int FROM sales_core.beregnede_bonuser WHERE bonus_id = ANY($3::uuid[])) AS bonuses
   `, [
     [DEMO.rounds.oslo, DEMO.rounds.bergen, DEMO.rounds.karmoy],
     [DEMO.deals.solberg, DEMO.deals.berglia, DEMO.deals.nordaasen,
      DEMO.deals.havnekvartalet, DEMO.deals.fjordparken, DEMO.deals.lindealleen],
+    [
+      'f1000001-0000-4000-8000-000000000001',
+      'f1000002-0000-4000-8000-000000000002',
+      'f1000003-0000-4000-8000-000000000003',
+      'f1000004-0000-4000-8000-000000000004',
+      'f1000005-0000-4000-8000-000000000005',
+    ],
   ]);
   const r = counts.rows[0];
   console.log('\n── Oppsummering ──');
@@ -584,6 +644,7 @@ async function printSummary(client) {
   console.log(`  SDU-runder:   ${r.rounds}/3 (Oslo / Bergen / Karmøy)`);
   console.log(`  MDU-deals:    ${r.deals}/6`);
   console.log(`  Cases:        ${r.cases}/7`);
+  console.log(`  Bonuser:      ${r.bonuses}/5`);
 }
 
 async function run() {
@@ -603,6 +664,7 @@ async function run() {
     await seedSduRounds(client);
     await seedMduDeals(client);
     await seedCases(client);
+    await seedBonuser(client);
     await client.query('COMMIT');
     await printSummary(client);
     console.log('\n✓ Demo-seed fullført (idempotent — trygt å kjøre på nytt)\n');

@@ -118,7 +118,7 @@ export function registerIncentiveHandlers(eventBus: IEventBus): void {
       periodMonth: currentPeriodMonth(),
     };
 
-    recordBonus(bonus);
+    await recordBonus(bonus);
 
     for (const triggered of triggeredIncentives) {
       await eventBus.publish({
