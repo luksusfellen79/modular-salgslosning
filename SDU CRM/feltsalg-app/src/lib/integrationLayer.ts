@@ -6,6 +6,24 @@ const BASE =
 
 const AI_BASE = (import.meta.env.VITE_AI_CORE_URL as string | undefined) ?? 'http://localhost:3000';
 
+export async function fetchBuildingCoord(
+  buildingId: string,
+): Promise<{ buildingId: string; lat: number; lon: number } | null> {
+  try {
+    const res = await fetch(`${BASE}/buildings/${encodeURIComponent(buildingId)}/locations`);
+    if (!res.ok) return null;
+    const data = await res.json() as {
+      coord?: { lat?: number; lon?: number } | null;
+    };
+    if (!data?.coord || typeof data.coord.lat !== 'number' || typeof data.coord.lon !== 'number') {
+      return null;
+    }
+    return { buildingId, lat: data.coord.lat, lon: data.coord.lon };
+  } catch {
+    return null;
+  }
+}
+
 const DEFAULT_UPSELL: UpsellProduct[] = [
   { name: 'Safe', price: 100 },
   { name: 'Forsikring', price: 100 },

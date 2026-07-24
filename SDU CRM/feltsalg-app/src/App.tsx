@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { Resident, Campaign, UpsellProduct, VisitStatus, VisitOutcome } from './lib/types';
 import { fetchResident, logSDUOutcome, fetchNBA, logNBAOutcome, NBARecommendation } from './lib/integrationLayer';
 import { fetchSellers, fetchRoundsForSeller, updateUnitVisit, Round, RoundUnit, Seller, UnitVisitStatus } from './lib/salesCore';
+import { RoundMap } from './components/RoundMap';
 
 // ── Telenor logo ──────────────────────────────────────────────────────────────
 function TelenorLogo({ size = 24, white = false }: { size?: number; white?: boolean }) {
@@ -210,6 +211,30 @@ function RoundUnitList({
     + round.units.filter(u => !visitMap.has(u.unitId) && u.visitStatus === 'sold').length;
   const conversion = done > 0 ? Math.round((sold / done) * 100) : 0;
 
+  const mapUnits = round.units.map((unit) => {
+    const local = visitMap.get(unit.unitId);
+    return {
+      unitId: unit.unitId,
+      buildingId: unit.buildingId,
+      address: unit.address,
+      visitStatus: local ? toUnitVisitStatus(local.outcome) : unit.visitStatus,
+    };
+  });
+
+  const unitsByBuilding = new Map<string, RoundUnit[]>();
+  for (const unit of round.units) {
+    const list = unitsByBuilding.get(unit.buildingId) ?? [];
+    list.push(unit);
+    unitsByBuilding.set(unit.buildingId, list);
+  }
+
+  const scrollToBuilding = (buildingId: string) => {
+    document.getElementById(`bygg-${buildingId}`)?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'center',
+    });
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 font-sans flex flex-col">
       {/* Header */}
@@ -250,47 +275,69 @@ function RoundUnitList({
         </div>
       </div>
 
-      {/* Unit list */}
-      <div className="flex-1 overflow-y-auto">
-        {round.units.map((unit, idx) => {
-          const localVisit = visitMap.get(unit.unitId);
-          const outcome = localVisit?.outcome;
-          const statusCfg = outcome ? STATUS_CONFIG[outcome] : null;
-          const isVisited = !!statusCfg || (unit.visitStatus !== 'pending' && !localVisit);
+      <div className="border-b border-gray-200 bg-white">
+        <RoundMap units={mapUnits} onSelectBuilding={scrollToBuilding} />
+        <div className="flex flex-wrap gap-3 px-4 py-2 text-[10px] text-gray-500">
+          <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-full bg-slate-400" /> Ikke startet</span>
+          <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-full bg-yellow-500" /> Pågår</span>
+          <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-full bg-blue-500" /> Ferdig</span>
+          <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-full bg-green-600" /> Solgt</span>
+        </div>
+      </div>
 
+      {/* Unit list — gruppert per bygg for scroll-mål */}
+      <div className="flex-1 overflow-y-auto">
+        {[...unitsByBuilding.entries()].map(([buildingId, buildingUnits]) => {
+          const street =
+            buildingUnits[0]?.address?.split(',')[0]?.trim() ?? buildingId;
           return (
-            <button
-              key={unit.unitId}
-              onClick={() => onSelect(unit)}
-              className="w-full text-left px-4 py-3.5 border-b border-gray-100 bg-white hover:bg-blue-50 active:bg-blue-100 transition-colors flex items-center gap-3"
-            >
-              <div className="w-8 h-8 rounded-full bg-telenor-blue-light flex items-center justify-center text-xs font-bold text-telenor-blue-dark shrink-0">
-                {idx + 1}
+            <div key={buildingId} id={`bygg-${buildingId}`}>
+              <div className="sticky top-0 z-10 px-4 py-1.5 bg-gray-100 border-b border-gray-200 text-[11px] font-semibold text-gray-600">
+                {street}
               </div>
-              <div className="flex-1 min-w-0">
-                <div className="font-semibold text-gray-900 text-sm truncate">{unit.residentName ?? unit.address}</div>
-                <div className="text-xs text-gray-500 mt-0.5 truncate">{unit.address}</div>
-              </div>
-              <div className="flex flex-col items-end gap-1.5 shrink-0">
-                {statusCfg ? (
-                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
-                    style={{ color: statusCfg.color, backgroundColor: statusCfg.bg }}>
-                    {statusCfg.label}
-                  </span>
-                ) : isVisited ? (
-                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
-                    Besøkt
-                  </span>
-                ) : (
-                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
-                    Ikke besøkt
-                  </span>
-                )}
-              </div>
-              <svg className="w-4 h-4 text-gray-300 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                <path d="M9 18l6-6-6-6" />
-              </svg>
-            </button>
+              {buildingUnits.map((unit) => {
+                const idx = round.units.findIndex((u) => u.unitId === unit.unitId);
+                const localVisit = visitMap.get(unit.unitId);
+                const outcome = localVisit?.outcome;
+                const statusCfg = outcome ? STATUS_CONFIG[outcome] : null;
+                const isVisited = !!statusCfg || (unit.visitStatus !== 'pending' && !localVisit);
+
+                return (
+                  <button
+                    key={unit.unitId}
+                    onClick={() => onSelect(unit)}
+                    className="w-full text-left px-4 py-3.5 border-b border-gray-100 bg-white hover:bg-blue-50 active:bg-blue-100 transition-colors flex items-center gap-3"
+                  >
+                    <div className="w-8 h-8 rounded-full bg-telenor-blue-light flex items-center justify-center text-xs font-bold text-telenor-blue-dark shrink-0">
+                      {idx + 1}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-gray-900 text-sm truncate">{unit.residentName ?? unit.address}</div>
+                      <div className="text-xs text-gray-500 mt-0.5 truncate">{unit.address}</div>
+                    </div>
+                    <div className="flex flex-col items-end gap-1.5 shrink-0">
+                      {statusCfg ? (
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                          style={{ color: statusCfg.color, backgroundColor: statusCfg.bg }}>
+                          {statusCfg.label}
+                        </span>
+                      ) : isVisited ? (
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
+                          Besøkt
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
+                          Ikke besøkt
+                        </span>
+                      )}
+                    </div>
+                    <svg className="w-4 h-4 text-gray-300 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                      <path d="M9 18l6-6-6-6" />
+                    </svg>
+                  </button>
+                );
+              })}
+            </div>
           );
         })}
       </div>
