@@ -94,7 +94,7 @@ PostgreSQL kjører på Railway. Fem schemas (cases legges til ved Case Service-b
 | Schema       | Tabeller                                           | Brukes av           |
 |--------------|----------------------------------------------------|---------------------|
 | `hub`        | roller, brukere, sessions                          | Hub / alle tjenester|
-| `sales_core` | mdu_deals, mdu_deal_events, tilbud, sdu_selgere, sdu_runder, sdu_besøk | Sales Core |
+| `sales_core` | mdu_deals, mdu_deal_events, tilbud, sdu_selgere, sdu_runder, sdu_besøk, beregnede_bonuser | Sales Core |
 | `sdu`        | bonusregler, bonuser, månedlig_oppsummering        | SDU Incentive Mgr   |
 | `mdu`        | kunder, kontrakter, enhetsaktiveringer             | MDU CRM / MDU Leder |
 | `cases`      | saker, hendelser, typeregister, rutingregler       | Case Service        |
@@ -215,6 +215,14 @@ SDU Planner/planner-app/src/
 - **Leaflet-gotcha:** default marker-ikon brekker under Vite-bundling → bruk `L.divIcon`.
 - **Kartverket WMTS:** `https://cache.kartverket.no/v1/wmts/1.0.0/topo/default/webmercator/{z}/{y}/{x}.png`
   (EPSG:3857), attribution `© Kartverket`.
+
+### SDU CRM (feltsalg) — rundekart
+SDU CRM/feltsalg-app/src/
+  components/RoundMap.tsx     — Leaflet + Kartverket WMTS + OSM-fallback, GPS (watchPosition), statusfarger, StrictMode-guard
+  lib/integrationLayer.ts    — fetchBuildingCoord (byggcoords fra IL)
+- Statusfarger: grå = ikke startet · gul = pågår · blå = ferdig · grønn = solgt
+- Samme Leaflet-gotcha som Planner: bruk `L.divIcon` (default marker-ikon brekker under Vite-bundling)
+- Kart over enhetslista; tapp på bygg → `scrollIntoView` til byggseksjon
 
 ---
 
@@ -454,6 +462,12 @@ CS oppretter sak → tildeles gruppe → løses (av teknisk gruppe eller CS) →
 - [ ] Azure AD / Telenor SSO — JWT er allerede Azure AD-kompatibelt
 - [ ] Ekte Telenor LocationAdapter (bytt ut mock via factory)
 - [ ] Territorie-tildeling i Planner (AI-kandidat — separat fra TSP)
+
+---
+
+## Workshop demo-seed
+
+`integration-layer/database/seeds/demo-workshop.mjs` seeder idempotent demodata (6 brukere, 3 flerbygg-runder, 10 MDU-deals over hele pipelinen + begge war-room-utfall, 7 cases, 5 DB-backede bonuser). Kjør fra `integration-layer/` med `DATABASE_PUBLIC_URL` satt — ikke `railway run` lokalt (intern host resolver ikke).
 
 ---
 

@@ -19,9 +19,9 @@ koblet via Integration Layer. Prototypen kjører på Railway.
 | Sales Core          | ✅ Live    | MDU pipeline + SDU runder/besøk → PostgreSQL     |
 | MDU CRM             | ✅ Live    | Kanban-pipeline (mdu-selger)                     |
 | MDU Leder           | ✅ Live    | War Room + oversikt (mdu-leder)                  |
-| SDU CRM             | ✅ Live    | Feltsalg dør-til-dør (sdu-selger)               |
+| SDU CRM             | ✅ Live    | Feltsalg dør-til-dør + rundekart (Kartverket + GPS) |
 | SDU Planner         | ✅ Live    | Runderplanlegging + ruteoptimalisering (TSP) + kart (sdu-leder) |
-| SDU Incentive Mgr   | ✅ Live    | Bonusstyring                                     |
+| SDU Incentive Mgr   | ✅ Live    | Bonusstyring — DB-backed (sales_core.beregnede_bonuser) |
 | KAS Core mock       | ⚠️ Legacy  | Beholdes for bakoverkompatibilitet               |
 
 ### Hva er ikke bygget ennå
@@ -56,6 +56,19 @@ byttes ut med ekte Telenor-adapter senere.
 
 **Deploy-merknad:** IL auto-deployer IKKE ved push. Redeploy manuelt:
 `railway up --service integration-layer --environment production`
+
+### Workshop demo-seed (juli 2026)
+
+`integration-layer/database/seeds/demo-workshop.mjs` — idempotent full-stack demodata for workshop. Faste UUID-er, deterministiske tidsstempler (ingen `Date.now`/`Math.random`), `ON CONFLICT`-upsert → trygt å re-kjøre.
+
+Innhold: 6 hub-brukere (PIN 1111–6666), 3 flerbygg-SDU-runder (Oslo/Bergen/Karmøy), 10 MDU-deals som dekker hele pipelinen + begge war-room-utfall (godkjent/avvist), 7 cases på tvers av alle statuser, 5 DB-backede bonuser.
+
+MDU-deals koder kontakt i `notater` med linjeprefiks (`legacyId:` / `contactName:` / `contactEmail:`) — samme format som `Sales Core/src/db/mappers.ts::decodeDealMeta` leser.
+
+Kjør fra `integration-layer/` med offentlig DB-URL (`railway run` injiserer intern host `postgres.railway.internal` som ikke resolver lokalt → ENOTFOUND):
+```bash
+DATABASE_PUBLIC_URL="postgresql://postgres:<pw>@kodama.proxy.rlwy.net:32179/railway" node database/seeds/demo-workshop.mjs
+```
 
 ---
 
