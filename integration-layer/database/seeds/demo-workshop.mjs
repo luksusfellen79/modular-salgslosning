@@ -61,6 +61,10 @@ const DEMO = {
     havnekvartalet: 'd1000004-0000-4000-8000-000000000004',
     fjordparken: 'd1000005-0000-4000-8000-000000000005',
     lindealleen: 'd1000006-0000-4000-8000-000000000006',
+    ekelund: 'd1000007-0000-4000-8000-000000000007',
+    sjokanten: 'd1000008-0000-4000-8000-000000000008',
+    kollen: 'd1000009-0000-4000-8000-000000000009',
+    elvebredden: 'd1000010-0000-4000-8000-000000000010',
   },
   cases: {
     order: 'e1000001-0000-4000-8000-000000000001',
@@ -312,9 +316,9 @@ async function seedSduRounds(client) {
 
 async function seedMduDeals(client) {
   console.log('→ MDU-pipeline (mdu_deals + events + tilbud)');
-  const now = new Date();
-  const iso = now.toISOString();
-  const dAgo = (d) => new Date(now.getTime() - d * 86400_000).toISOString();
+  // Deterministiske tidsstempler — DEMO_VISIT_T0-avledet (ingen Date.now / Math.random)
+  const iso = new Date(DEMO_VISIT_T0).toISOString();
+  const dAgo = (d) => new Date(DEMO_VISIT_T0 - d * 86400_000).toISOString();
 
   const SANNSYN = {
     'lead': 10, 'kontaktet': 25, 'befaring': 40, 'tilbud-sendt': 55,
@@ -383,6 +387,48 @@ async function seedMduDeals(client) {
         ['status_changed', 'befaring', 'tilbud-sendt', 30, 'Tilbud sendt'],
         ['status_changed', 'tilbud-sendt', 'tapt', 10, 'Tapt til konkurrent på pris'],
       ] },
+    { id: DEMO.deals.ekelund, name: 'Ekelund Terrasse', units: 18, status: 'kontaktet',
+      value: 216_000, close: '2026-10-15', contact: 'Siri Ekelund', email: 'siri@ekelund-terrasse.no',
+      product: 'Produkt: Fiber 500', notes: 'Kontakt opprettet — kvalifisering pågår.',
+      events: [
+        ['created', null, 'lead', 14, 'Lead fra innkommende henvendelse'],
+        ['status_changed', 'lead', 'kontaktet', 5, 'Kontakt opprettet med styreleder'],
+      ] },
+    { id: DEMO.deals.sjokanten, name: 'Sjøkanten Brygge', units: 24, status: 'befaring',
+      value: 288_000, close: '2026-09-20', contact: 'Bjørn Sjø', email: 'bjorn@sjokanten.no',
+      product: 'Produkt: Fiber Total', notes: 'Befaring avtalt med styret.',
+      events: [
+        ['created', null, 'lead', 21, 'Lead fra kampanje'],
+        ['status_changed', 'lead', 'kontaktet', 16, 'Første møte gjennomført'],
+        ['status_changed', 'kontaktet', 'befaring', 8, 'Befaring avtalt'],
+      ] },
+    { id: DEMO.deals.kollen, name: 'Kollen Park', units: 40, status: 'war-room-godkjent',
+      value: 2_200_000, close: '2026-08-01', contact: 'Hege Kollen', email: 'hege@kollenpark.no',
+      product: 'Produkt: Fiber Total', notes: 'War room godkjente spesialrabatt — klar for avtale.',
+      events: [
+        ['created', null, 'lead', 50, 'Lead fra utbygger'],
+        ['status_changed', 'lead', 'kontaktet', 42, 'Møte med styret'],
+        ['status_changed', 'kontaktet', 'befaring', 35, 'Befaring gjennomført'],
+        ['status_changed', 'befaring', 'tilbud-sendt', 28, 'Tilbud sendt'],
+        ['status_changed', 'tilbud-sendt', 'forhandling', 18, 'Forhandling om volumrabatt'],
+        ['status_changed', 'forhandling', 'war-room', 10, 'Sendt til war room — rabatt utenfor fullmakt'],
+        ['status_changed', 'war-room', 'war-room-godkjent', 3, 'War room godkjente rabatten'],
+      ],
+      tilbud: { produkt: 'mdu-fiber-total', pris: 129, status: 'sendt', sentDaysAgo: 28 } },
+    { id: DEMO.deals.elvebredden, name: 'Elvebredden', units: 30, status: 'war-room-avvist',
+      value: 540_000, close: '2026-07-01', contact: 'Kai Elv', email: 'kai@elvebredden.no',
+      product: 'Produkt: Fiber 500', notes: 'War room avviste rabattkrav — deal tapt.',
+      lostDaysAgo: 2, lostReason: 'War room avviste rabatt — utenfor forretningsregler',
+      events: [
+        ['created', null, 'lead', 40, 'Lead fra innkommende henvendelse'],
+        ['status_changed', 'lead', 'kontaktet', 32, 'Møte med styret'],
+        ['status_changed', 'kontaktet', 'befaring', 25, 'Befaring gjennomført'],
+        ['status_changed', 'befaring', 'tilbud-sendt', 18, 'Tilbud sendt'],
+        ['status_changed', 'tilbud-sendt', 'forhandling', 12, 'Kunde krevde ytterligere rabatt'],
+        ['status_changed', 'forhandling', 'war-room', 6, 'Sendt til war room'],
+        ['status_changed', 'war-room', 'war-room-avvist', 2, 'War room avviste — utenfor forretningsregler'],
+      ],
+      tilbud: { produkt: 'mdu-bb-500', pris: 99, status: 'sendt', sentDaysAgo: 18 } },
   ];
 
   const demoDealIds = deals.map((d) => d.id);
@@ -390,8 +436,13 @@ async function seedMduDeals(client) {
   await client.query(`DELETE FROM sales_core.tilbud WHERE deal_id = ANY($1::uuid[])`, [demoDealIds]);
 
   for (const d of deals) {
-    const meta = JSON.stringify({ contactName: d.contact, contactEmail: d.email, product: d.product });
-    const notater = `${meta}\n${d.product}\nKontakt: ${d.contact}\n${d.notes}`;
+    const notater = [
+      `legacyId: ${d.id}`,
+      `contactName: ${d.contact}`,
+      `contactEmail: ${d.email}`,
+      d.product,
+      d.notes,
+    ].join('\n');
     const byggId = `bygg-${d.name.toLowerCase().replace(/\s+/g, '-').slice(0, 40)}`;
     const vunnet = d.wonDaysAgo != null ? dAgo(d.wonDaysAgo) : null;
     const tapt = d.lostDaysAgo != null ? dAgo(d.lostDaysAgo) : null;
@@ -432,7 +483,7 @@ async function seedMduDeals(client) {
     }
   }
 
-  console.log(`  ✓ ${deals.length} MDU-deals + events + tilbud (alle pipeline-statuser dekket)`);
+  console.log(`  ✓ ${deals.length} MDU-deals + events + tilbud (hele pipelinen + begge war-room-utfall)`);
 }
 
 async function seedCases(client) {
@@ -629,7 +680,8 @@ async function printSummary(client) {
   `, [
     [DEMO.rounds.oslo, DEMO.rounds.bergen, DEMO.rounds.karmoy],
     [DEMO.deals.solberg, DEMO.deals.berglia, DEMO.deals.nordaasen,
-     DEMO.deals.havnekvartalet, DEMO.deals.fjordparken, DEMO.deals.lindealleen],
+     DEMO.deals.havnekvartalet, DEMO.deals.fjordparken, DEMO.deals.lindealleen,
+     DEMO.deals.ekelund, DEMO.deals.sjokanten, DEMO.deals.kollen, DEMO.deals.elvebredden],
     [
       'f1000001-0000-4000-8000-000000000001',
       'f1000002-0000-4000-8000-000000000002',
@@ -642,7 +694,7 @@ async function printSummary(client) {
   console.log('\n── Oppsummering ──');
   console.log(`  Hub-brukere:  ${r.hub_users}/6`);
   console.log(`  SDU-runder:   ${r.rounds}/3 (Oslo / Bergen / Karmøy)`);
-  console.log(`  MDU-deals:    ${r.deals}/6`);
+  console.log(`  MDU-deals:    ${r.deals}/10`);
   console.log(`  Cases:        ${r.cases}/7`);
   console.log(`  Bonuser:      ${r.bonuses}/5`);
 }
